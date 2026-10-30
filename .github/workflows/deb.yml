@@ -14,7 +14,7 @@ jobs:
       - name: Dependências gráficas e de teste
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-venv xvfb xauth libx11-xcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libnss3 libnspr4 libasound2 libdbus-1-3 libegl1 libgl1 libgbm1 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libfontconfig1 libnotify-bin libglib2.0-0
+          sudo apt-get install -y python3-venv xvfb xauth libx11-xcb1 libxcb-shape0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libnss3 libnspr4 libasound2 libdbus-1-3 libegl1 libgl1 libgbm1 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libfontconfig1 libnotify-bin libglib2.0-0
           python3 -m venv build/test-env
           build/test-env/bin/python -m pip install -r requirements.txt
       - name: Verificar sintaxe e armazenamento isolado
@@ -29,11 +29,14 @@ jobs:
           from pathlib import Path
           import PySide6
           qt = Path(PySide6.__file__).parent / 'Qt'
+          missing = False
           for path in [qt/'plugins/platforms/libqxcb.so', qt/'lib/libQt6XcbQpa.so.6', qt/'libexec/QtWebEngineProcess']:
               result = subprocess.run(['ldd', str(path)], capture_output=True, text=True)
               print(str(path), result.stdout, result.stderr, flush=True)
               if result.returncode or 'not found' in result.stdout:
-                  raise SystemExit('Dependência nativa ausente no runtime Qt')
+                  missing = True
+          if missing:
+              raise SystemExit('Dependência nativa ausente no runtime Qt')
           PYQT
       - name: Exercitar interface Qt sem login nem rede
         env:
