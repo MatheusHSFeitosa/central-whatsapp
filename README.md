@@ -1,8 +1,8 @@
-# Central WhatsApp
+# Central Chats
 
 Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado ao WhatsApp ou à Meta.
 
-**Versão 0.4.0 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+**Versão 0.4.1 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
 
 ## Recursos
 
@@ -40,7 +40,7 @@ Abra **Menu > Preferências** para escolher:
 
 Padrões novos: início automático e oculto desativados, nenhum perfil pré-selecionado para carga e fechamento em segundo plano quando há meio de retorno. Não há suspensão dos perfis carregados ao ocultar: eles continuam consumindo recursos para receber mensagens.
 
-A bandeja pode não estar disponível no GNOME/Pop!_OS. Nesse caso, o mesmo atalho **Central WhatsApp** do menu reabre a janela por comunicação local entre instâncias. Se não houver bandeja nem esse caminho confirmado, o aplicativo mantém a janela visível e explica como sair. Use **Menu > Sair da central** para encerrar de verdade.
+A bandeja pode não estar disponível no GNOME/Pop!_OS. Nesse caso, o mesmo atalho **Central Chats** do menu reabre a janela por comunicação local entre instâncias. Se não houver bandeja nem esse caminho confirmado, o aplicativo mantém a janela visível e explica como sair. Use **Menu > Sair da central** para encerrar de verdade.
 
 As preferências ficam em `settings.json` dentro da pasta de dados, e o início automático local/DEB em `$XDG_CONFIG_HOME/autostart/central-whatsapp.desktop` (padrão `~/.config/autostart/`). A remoção local só apaga a entrada com o marcador de propriedade desta central. A remoção do DEB preserva dados do usuário; desative o início automático pelas Preferências antes de desinstalar.
 
@@ -51,10 +51,10 @@ A inicialização automática no **Flatpak** fica indisponível até implementar
 Baixe o `.deb` da versão desejada em **Releases** deste repositório. Em Pop!_OS / Ubuntu **22.04 amd64**, na pasta do arquivo:
 
 ```sh
-sudo apt install ./central-whatsapp_0.4.0_amd64.deb
+sudo apt install ./central-whatsapp_0.4.1_amd64.deb
 ```
 
-Abra **Central WhatsApp** no menu. Clique em **Adicionar perfil**, informe um nome e conecte pelo celular. Cada perfil pode usar um número diferente.
+Abra **Central Chats** no menu. Clique em **Adicionar perfil**, informe um nome e conecte pelo celular. Cada perfil pode usar um número diferente.
 
 Este é um arquivo local instalado pelo APT. **Ainda não existe repositório APT assinado para atualização automática.** O pacote atual depende de Python 3.10 e não se destina a Ubuntu 24.04 ou outras versões.
 
@@ -92,7 +92,7 @@ Com `flatpak-builder` instalado e Flathub configurado:
 
 ```sh
 sh scripts/build-flatpak.sh
-flatpak install --user ./dist/central-whatsapp_0.4.0_x86_64.flatpak
+flatpak install --user ./dist/central-whatsapp_0.4.1_x86_64.flatpak
 ```
 
 São necessários KDE SDK 6.11 e PySide BaseApp 6.11; o construtor pode obtê-los do Flathub. O teste precisa confirmar especialmente sandbox do Qt WebEngine, notificações e diálogos de arquivos. Não há instrução para desativar o sandbox. Chamadas de vídeo e câmera no Flatpak ainda não foram habilitadas/validadas.

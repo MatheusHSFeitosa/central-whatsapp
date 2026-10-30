@@ -102,7 +102,7 @@ class AutostartManager:
             command = next(([str(path)] for path in (Path.home() / '.local/bin/central-whatsapp', Path('/usr/bin/central-whatsapp'))
                             if path.is_file() and os.access(path, os.X_OK)), None)
         if not isinstance(command, (tuple, list)) or not command:
-            raise OSError('Instale a Central WhatsApp antes de ativar a inicialização automática')
+            raise OSError('Instale a Central Chats antes de ativar a inicialização automática')
         if any(not isinstance(arg, str) or not arg or any(char in arg for char in '\n\r\x00') for arg in command):
             raise ValueError('Comando de inicialização inválido')
         return list(command)
@@ -131,7 +131,7 @@ class AutostartManager:
                 self.path.unlink()
             return
         command = self._command()
-        content = ('[Desktop Entry]\nType=Application\nName=Central WhatsApp\n'
+        content = ('[Desktop Entry]\nType=Application\nName=Central Chats\n'
                    'Exec=' + ' '.join(_exec_argument(arg) for arg in command + ['--autostart']) + '\n'
                    'Icon=central-whatsapp\nTerminal=false\nX-GNOME-Autostart-enabled=true\n' + MARKER + '\n')
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

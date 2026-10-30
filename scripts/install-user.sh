@@ -22,4 +22,4 @@ chmod 755 "$HOME/.local/bin/central-whatsapp"
 sed "s|Exec=central-whatsapp|Exec=\"$HOME/.local/bin/central-whatsapp\"|" "$base/packaging/central-whatsapp.desktop" > "$HOME/.local/share/applications/central-whatsapp.desktop"
 install -m644 "$base/whatsapp-web.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/central-whatsapp.svg"
 if command -v update-desktop-database >/dev/null; then update-desktop-database "$HOME/.local/share/applications"; fi
-echo 'Central WhatsApp instalada. Abra pelo menu.'
+echo 'Central Chats instalada. Abra pelo menu.'

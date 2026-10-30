@@ -36,7 +36,7 @@ class Page(QWebEnginePage):
 class Window(DesktopUIMixin, QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Central WhatsApp')
+        self.setWindowTitle('Central Chats')
         self.resize(1250, 820)
         self.setWindowIcon(QIcon(str(Path(__file__).with_name('whatsapp-web.svg'))))
         self.views, self.profiles, self.load_states = {}, {}, {}
@@ -67,7 +67,7 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def setup_tray(self):
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
-        self.tray.setToolTip('Central WhatsApp')
+        self.tray.setToolTip('Central Chats')
         menu = QMenu(self)
         menu.addAction('Abrir central', self.show_window)
         menu.addAction('Preferências…', self.show_preferences)
@@ -419,9 +419,9 @@ class Window(DesktopUIMixin, QMainWindow):
         self.notifications.append(notification); notification.show()
         try:
             if shutil.which('notify-send'):
-                subprocess.Popen(['notify-send','--app-name=Central WhatsApp','--icon=central-whatsapp',name+' · '+notification.title(),notification.message()],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                subprocess.Popen(['notify-send','--app-name=Central Chats','--icon=central-whatsapp',name+' · '+notification.title(),notification.message()],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             elif shutil.which('gdbus'):
-                subprocess.Popen(['gdbus','call','--session','--dest','org.freedesktop.Notifications','--object-path','/org/freedesktop/Notifications','--method','org.freedesktop.Notifications.Notify',json.dumps('Central WhatsApp'),'0',json.dumps('central-whatsapp'),json.dumps(name+' · '+notification.title(),ensure_ascii=False),json.dumps(notification.message(),ensure_ascii=False),'[]','{}','-1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                subprocess.Popen(['gdbus','call','--session','--dest','org.freedesktop.Notifications','--object-path','/org/freedesktop/Notifications','--method','org.freedesktop.Notifications.Notify',json.dumps('Central Chats'),'0',json.dumps('central-whatsapp'),json.dumps(name+' · '+notification.title(),ensure_ascii=False),json.dumps(notification.message(),ensure_ascii=False),'[]','{}','-1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             else:
                 self.tray.showMessage(name+' · '+notification.title(),notification.message())
         except OSError:

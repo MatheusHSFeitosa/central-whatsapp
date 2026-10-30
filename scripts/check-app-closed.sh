@@ -18,6 +18,6 @@ except ImportError:
 app = QCoreApplication([])
 lock = QLockFile(sys.argv[1])
 if not lock.tryLock(100):
-    sys.exit('A Central WhatsApp está aberta ou o armazenamento está ocupado. Feche a aplicação e tente novamente.')
+    sys.exit('A Central Chats está aberta ou o armazenamento está ocupado. Feche a aplicação e tente novamente.')
 lock.unlock()
 PY

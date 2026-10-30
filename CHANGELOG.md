@@ -1,5 +1,12 @@
 # Alterações
 
+## 0.4.1 — 30/10/2026
+
+- Nome de exibição Central Chats, preservando IDs e pastas existentes.
+- Menu, controle da lateral e adicionar apenas com ícone na própria barra lateral.
+- Cabeçalho acima do WhatsApp e texto de rodapé removidos para liberar a área das conversas.
+- Recarregar conta fica no menu lateral.
+
 ## 0.4.0 — 30/10/2026
 
 - Fotos circulares por perfil, com imagem local e retorno ao ícone.
