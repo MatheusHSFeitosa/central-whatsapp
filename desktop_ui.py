@@ -147,6 +147,7 @@ class DesktopUIMixin:
         side.addWidget(self.add_button)
         self.list = QListWidget()
         self.list.setAccessibleName('Perfis do WhatsApp')
+        self.list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list.setIconSize(QSize(24, 24))
         self.list.setSpacing(3)
         side.addWidget(self.list, 1)
