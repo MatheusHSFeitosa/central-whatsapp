@@ -127,6 +127,7 @@ def edit_profile_dialog(parent, title, name='', icon='user'):
 class DesktopUIMixin:
     def build_ui(self):
         root = QWidget()
+        root.setObjectName('centralRoot')
         self.setCentralWidget(root)
         outer = QHBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -164,6 +165,7 @@ class DesktopUIMixin:
         self.sidebar_toggle.clicked.connect(self.toggle_sidebar)
         header.addWidget(self.sidebar_toggle)
         self.status = QLabel('Selecione ou adicione um perfil')
+        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         header.addWidget(self.status, 1)
@@ -203,6 +205,48 @@ class DesktopUIMixin:
         content.addWidget(self.stack, 1)
         self.list.currentRowChanged.connect(self.select)
         self.apply_sidebar(False)
+        self.apply_gnome_style()
+
+    def apply_gnome_style(self):
+        dark = self.palette().window().color().lightness() < 128
+        main, side, text, border, hover, selected, muted = (
+            ('#242424', '#303030', '#eeeeec', '#505050', '#424242', '#224b70', '#92928e')
+            if dark else
+            ('#ffffff', '#ebebeb', '#242424', '#c8c8c8', '#dedede', '#cce1f6', '#757575')
+        )
+        self.setStyleSheet(f"""
+            QWidget#centralRoot {{ background: {main}; }}
+            QWidget#sidebar {{ background: {side}; border-right: 1px solid {border}; }}
+            QLabel {{ color: {text}; }}
+            QListWidget {{ border: 0; background: transparent; color: {text}; }}
+            QListWidget::item {{ padding: 8px 4px; border-radius: 6px; }}
+            QListWidget::item:hover {{ background: {hover}; }}
+            QListWidget::item:selected {{ background: {selected}; color: {text}; }}
+            QToolButton:focus, QPushButton:focus, QComboBox:focus, QLineEdit:focus {{ border: 1px solid #3584e4; }}
+            QToolButton {{ min-width: 32px; min-height: 32px; border: 0;
+                border-radius: 6px; background: transparent; color: {text}; }}
+            QToolButton:hover {{ background: {hover}; }}
+            QToolButton:pressed {{ background: {selected}; }}
+            QPushButton {{ padding: 6px 10px; border-radius: 7px; border: 1px solid {border};
+                background: {side}; color: {text}; }}
+            QPushButton:hover {{ background: {hover}; }}
+            QPushButton:pressed {{ background: {selected}; }}
+            QPushButton:disabled, QToolButton:disabled {{ color: {muted}; }}
+            QLineEdit, QComboBox {{ padding: 6px; border: 1px solid {border};
+                border-radius: 6px; background: {main}; color: {text}; }}
+            QLineEdit:focus, QComboBox:focus {{ border: 1px solid #3584e4; }}
+            QDialog, QMenu, QComboBox QAbstractItemView {{ background: {main}; color: {text}; }}
+            QMenu {{ border: 1px solid {border}; padding: 6px; }}
+            QMenu::item {{ padding: 7px 16px; border-radius: 6px; }}
+            QMenu::item:selected {{ background: {selected}; }}
+            QMenu::item:disabled {{ color: {muted}; }}
+            QScrollArea {{ border: 0; background: transparent; }}
+            QCheckBox {{ min-height: 22px; spacing: 8px; color: {text}; }}
+            QCheckBox:disabled {{ color: {muted}; }}
+            QGroupBox {{ border: 0; margin-top: 20px; padding-top: 6px; color: {text}; }}
+            QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; font-weight: bold; }}
+            QToolTip {{ background: {main}; color: {text}; border: 1px solid {border}; padding: 4px; }}
+        """)
 
     def apply_sidebar(self, collapsed):
         self.sidebar.setFixedWidth(64 if collapsed else 220)
