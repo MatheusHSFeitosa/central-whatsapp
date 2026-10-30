@@ -2,7 +2,7 @@
 
 Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado ao WhatsApp ou à Meta.
 
-**Versão 0.4.1 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+**Versão 0.4.2 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
 
 ## Recursos
 
@@ -22,11 +22,11 @@ Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mes
 
 Selecione uma conta e abra **Menu > Foto do perfil**:
 
-- **Usar foto automática do WhatsApp**: tenta ler a própria foto já carregada no controle de perfil da conta. Não abre conversas, não consulta contatos e não faz downloads por fora da sessão. A detecção é experimental: mudanças de layout ou bloqueios do navegador podem impedir a leitura; nesse caso permanece o ícone (ou a última foto automática disponível).
+- **Usar foto automática do WhatsApp**: tenta ler a própria foto já carregada no controle de perfil da conta. Não abre conversas, não consulta contatos e não faz downloads por fora da sessão. A detecção aceita controles de navegação acessíveis, inclusive abas e elementos role=button. Se o navegador bloquear leitura pelo canvas, pode usar uma captura local recortada da própria foto visível, sem capturar conversas ou mudar de conta. A detecção é experimental: mudanças de layout ou bloqueios do navegador podem impedir a leitura; nesse caso permanece o ícone (ou a última foto automática disponível).
 - **Usar foto do computador**: escolha PNG, JPEG ou WebP de até 10 MB. A central recorta o centro, normaliza para 256×256 e exibe um avatar circular na lateral expandida ou recolhida.
 - **Usar somente ícone**: volta ao ícone predefinido. Fotos armazenadas continuam locais; arquivar/restaurar mantém o mesmo perfil.
 
-As imagens ficam em `avatars/<uuid>.png` dentro da pasta de dados da central, com acesso restrito ao usuário. Não são enviadas a nenhum servidor próprio. A foto automática só é consultada para contas já carregadas, em intervalos de 30 segundos. A configuração guarda apenas o modo da foto, sem caminhos externos ou URLs. A extração foi testada em telas sintéticas; uma conta autenticada ainda precisa confirmar a compatibilidade do layout real.
+As imagens ficam em `avatars/<uuid>.png` dentro da pasta de dados da central, com acesso restrito ao usuário. Não são enviadas a nenhum servidor próprio. A foto automática só é consultada para contas já carregadas, em intervalos de 30 segundos. A configuração guarda apenas o modo da foto, sem caminhos externos ou URLs. Quando solicitada pelo menu, uma falha de detecção agora mostra uma explicação em vez de permanecer silenciosa. A extração e a captura recortada foram testadas em telas sintéticas; uma conta autenticada ainda precisa confirmar a compatibilidade do layout real.
 
 ## Segundo plano e inicialização
 
@@ -51,7 +51,7 @@ A inicialização automática no **Flatpak** fica indisponível até implementar
 Baixe o `.deb` da versão desejada em **Releases** deste repositório. Em Pop!_OS / Ubuntu **22.04 amd64**, na pasta do arquivo:
 
 ```sh
-sudo apt install ./central-whatsapp_0.4.1_amd64.deb
+sudo apt install ./central-whatsapp_0.4.2_amd64.deb
 ```
 
 Abra **Central Chats** no menu. Clique em **Adicionar perfil**, informe um nome e conecte pelo celular. Cada perfil pode usar um número diferente.
@@ -92,7 +92,7 @@ Com `flatpak-builder` instalado e Flathub configurado:
 
 ```sh
 sh scripts/build-flatpak.sh
-flatpak install --user ./dist/central-whatsapp_0.4.1_x86_64.flatpak
+flatpak install --user ./dist/central-whatsapp_0.4.2_x86_64.flatpak
 ```
 
 São necessários KDE SDK 6.11 e PySide BaseApp 6.11; o construtor pode obtê-los do Flathub. O teste precisa confirmar especialmente sandbox do Qt WebEngine, notificações e diálogos de arquivos. Não há instrução para desativar o sandbox. Chamadas de vídeo e câmera no Flatpak ainda não foram habilitadas/validadas.

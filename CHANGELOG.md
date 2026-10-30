@@ -1,5 +1,12 @@
 # Alterações
 
+## 0.4.2 — 30/10/2026
+
+- Detecção da própria foto compatível com botões acessíveis e barras de abas.
+- Alternativa de captura local recortada quando a imagem visível bloqueia leitura pelo canvas.
+- Falha de busca explícita pelo menu mostra uma explicação.
+- Testes incluem variantes de controles, rejeição de fotos de contatos e captura de pixels da própria foto.
+
 ## 0.4.1 — 30/10/2026
 
 - Nome de exibição Central Chats, preservando IDs e pastas existentes.

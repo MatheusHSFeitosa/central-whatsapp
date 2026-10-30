@@ -13,9 +13,14 @@ from profile_store import _canonical_id
 OWN_AVATAR_SCRIPT = r'''(() => {
  try {
   const matches = new Set();
+  const labels = new Set(['perfil','profile','meu perfil','seu perfil','your profile','tu perfil','sua foto do perfil','sua foto de perfil','foto do seu perfil','your profile photo','foto de perfil']);
   document.querySelectorAll('[data-testid="menu-bar-profile"]').forEach(el => matches.add(el));
-  document.querySelectorAll('nav button[aria-label], [role="navigation"] button[aria-label]').forEach(el => {
-   if (['perfil','profile','sua foto do perfil','your profile photo'].includes(el.getAttribute('aria-label').trim().toLowerCase())) matches.add(el);
+  const bars = 'nav, [role="navigation"], [role="tablist"], [data-testid="navbar"], #side > header';
+  document.querySelectorAll(bars).forEach(bar => {
+   bar.querySelectorAll('button, [role="button"], [role="tab"]').forEach(el => {
+    const label = (el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().toLowerCase();
+    if (labels.has(label)) matches.add(el);
+   });
   });
   const images = new Set();
   for (const el of matches) {
@@ -24,13 +29,22 @@ OWN_AVATAR_SCRIPT = r'''(() => {
     if (image.complete && image.naturalWidth >= 32 && image.naturalHeight >= 32 && image.getBoundingClientRect().width > 0 && !image.src.startsWith('data:image/svg')) images.add(image);
    }
   }
-  if (images.size !== 1) return null;
+  if (images.size !== 1) return {status: images.size ? 'ambiguous' : 'not-found'};
   const image = [...images][0];
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
   const size = Math.min(image.naturalWidth, image.naturalHeight);
-  canvas.getContext('2d').drawImage(image,(image.naturalWidth-size)/2,(image.naturalHeight-size)/2,size,size,0,0,256,256);
-  return canvas.toDataURL('image/png');
- } catch (_) { return null; }
+  try {
+   canvas.getContext('2d').drawImage(image,(image.naturalWidth-size)/2,(image.naturalHeight-size)/2,size,size,0,0,256,256);
+   return canvas.toDataURL('image/png');
+  } catch (_) {
+   // Se o site bloqueia ler pixels do canvas, fornece apenas o retângulo
+   // visível da própria foto para captura local pela janela Qt.
+   const rect=image.getBoundingClientRect();
+   const top=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+   if ((top !== image && !image.contains(top)) || rect.x<0 || rect.y<0 || rect.right>innerWidth || rect.bottom>innerHeight) return {status:'blocked'};
+   return {status:'capture',rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height}};
+  }
+ } catch (_) { return {status:'unavailable'}; }
 })()'''
 
 class AvatarManager:

@@ -13,7 +13,7 @@ from avatar_manager import AvatarManager, OWN_AVATAR_SCRIPT
 from profile_store import ProfileStore
 from settings_store import PreferencesStore, AutostartManager
 from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon
-from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt
+from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
@@ -380,14 +380,14 @@ class Window(DesktopUIMixin, QMainWindow):
                 try:self.avatar_manager.remove(key)
                 except OSError:pass
                 self.update_avatar_icon(key)
-            self.refresh_avatar(key)
+            self.refresh_avatar(key, explain=True)
             self.status.setText(account['name']+' — Buscando sua foto; o ícone será usado se ela não estiver disponível.')
 
     def poll_avatars(self):
         for account in self.accounts:
             if account.get('avatar_mode','auto')=='auto':self.refresh_avatar(account['id'])
 
-    def refresh_avatar(self, key):
+    def refresh_avatar(self, key, explain=False):
         account=next((a for a in self.accounts if a['id']==key),None)
         if not account or account.get('avatar_mode','auto')!='auto' or key not in self.views or key in self.avatar_pending:return
         page=self.views[key][0].page()
@@ -395,13 +395,37 @@ class Window(DesktopUIMixin, QMainWindow):
         self.avatar_pending.add(key)
         def received(value):
             self.avatar_pending.discard(key)
+            try:value=json.loads(value) if isinstance(value,str) else value
+            except (ValueError,TypeError):value=None
             current=next((a for a in self.accounts if a['id']==key),None)
-            if not current or current.get('avatar_mode','auto')!='auto' or key not in self.views or not value:return
+            if not current or current.get('avatar_mode','auto')!='auto' or key not in self.views:return
+            success=False
             try:
-                self.avatar_manager.save_data_url(key,value)
-                self.update_avatar_icon(key)
-            except (ValueError,OSError):pass
-        page.runJavaScript(OWN_AVATAR_SCRIPT,received)
+                if isinstance(value,str) and value.startswith('data:image/png;base64,'):
+                    self.avatar_manager.save_data_url(key,value)
+                    success=True
+                elif isinstance(value,dict) and value.get('status')=='capture':
+                    view=self.views[key][0]
+                    # Não captura janelas ocultas, outro perfil ou a área de conversas.
+                    if view.isVisible() and self.stack.currentWidget() is view:
+                        rect=value.get('rect',{})
+                        factor=view.zoomFactor()
+                        bounds=QRect(round(float(rect['x'])*factor),round(float(rect['y'])*factor),round(float(rect['width'])*factor),round(float(rect['height'])*factor))
+                        if 16 <= bounds.width() <= 256 and 16 <= bounds.height() <= 256 and view.rect().contains(bounds):
+                            image=view.grab(bounds).toImage()
+                            if not image.isNull():
+                                self.avatar_manager._save(key,image)
+                                success=True
+                if success:self.update_avatar_icon(key)
+            except (ValueError,OSError,KeyError,TypeError,OverflowError,RuntimeError):pass
+            if explain:
+                if success:
+                    self.status.setText(current['name']+' — Foto atualizada.')
+                else:
+                    self.status.setText(current['name']+' — Foto automática indisponível.')
+                    QMessageBox.information(self,'Foto automática indisponível',
+                        'Não foi possível identificar sua própria foto nesta tela. Confira se a conta está conectada e sua foto aparece na barra do WhatsApp. Você também pode usar Menu → Foto do perfil → Usar foto do computador.')
+        page.runJavaScript('JSON.stringify('+OWN_AVATAR_SCRIPT+')',received)
 
     def permission(self,key,permission):
         if key not in self.views or permission.origin().scheme()!='https' or permission.origin().host()!='web.whatsapp.com':permission.deny();return
