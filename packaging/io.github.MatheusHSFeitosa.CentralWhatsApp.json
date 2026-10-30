@@ -1,0 +1,26 @@
+{
+  "app-id": "io.github.MatheusHSFeitosa.CentralWhatsApp",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "6.11",
+  "sdk": "org.kde.Sdk",
+  "base": "io.qt.PySide.BaseApp",
+  "base-version": "6.11",
+  "command": "central-whatsapp",
+  "finish-args": [
+    "--share=network", "--share=ipc", "--socket=fallback-x11", "--socket=wayland",
+    "--device=dri", "--socket=pulseaudio", "--talk-name=org.freedesktop.Notifications"
+  ],
+  "modules": [{
+    "name": "central-whatsapp",
+    "buildsystem": "simple",
+    "build-commands": [
+      "install -Dm644 central.py /app/share/central-whatsapp/central.py",
+      "install -Dm644 whatsapp-web.svg /app/share/central-whatsapp/whatsapp-web.svg",
+      "install -Dm644 whatsapp-web.svg /app/share/icons/hicolor/scalable/apps/io.github.MatheusHSFeitosa.CentralWhatsApp.svg",
+      "install -Dm644 packaging/central-whatsapp.desktop /app/share/applications/io.github.MatheusHSFeitosa.CentralWhatsApp.desktop",
+      "sed -i 's/Icon=central-whatsapp/Icon=io.github.MatheusHSFeitosa.CentralWhatsApp/' /app/share/applications/io.github.MatheusHSFeitosa.CentralWhatsApp.desktop",
+      "install -Dm755 packaging/flatpak-launcher /app/bin/central-whatsapp"
+    ],
+    "sources": [{"type": "dir", "path": "..", "skip": [".git", "build", "dist", ".venv", "__pycache__"]}]
+  }]
+}

@@ -1,0 +1,23 @@
+name: Pacote DEB (Pop!_OS e Ubuntu 22.04)
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências para compilar
+        run: sudo apt-get update && sudo apt-get install -y python3-venv
+      - name: Verificar sintaxe
+        run: python3 -m py_compile central.py tests/smoke.py
+      - name: Montar DEB
+        run: sh scripts/build-deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: central-whatsapp-deb
+          path: dist/*.deb
