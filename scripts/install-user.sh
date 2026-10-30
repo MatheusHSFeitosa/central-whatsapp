@@ -11,7 +11,7 @@ if command -v apt-get >/dev/null && command -v dpkg-deb >/dev/null; then
     (cd "$dest/support/downloads" && apt-get download libxcb-cursor0 libnotify-bin)
     for package in "$dest/support/downloads/"*.deb; do dpkg-deb -x "$package" "$dest/support"; done
 fi
-install -m644 "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/VERSION" "$base/whatsapp-web.svg" "$dest/"
+install -m644 "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$dest/"
 cat > "$HOME/.local/bin/central-whatsapp" <<'LAUNCH'
 #!/bin/sh
 export LD_LIBRARY_PATH="$HOME/.local/share/central-whatsapp/support/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

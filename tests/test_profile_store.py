@@ -21,11 +21,21 @@ class ProfileStoreTests(unittest.TestCase):
     def test_missing_and_old_format(self):
         self.assertEqual(self.store.load(), [])
         self.store.config.write_text(json.dumps([self.record]), encoding='utf-8')
-        expected = dict(self.record, archived=False, icon='user', avatar_mode='auto')
+        expected = dict(self.record, archived=False, icon='user', avatar_mode='auto', service='whatsapp')
         self.assertEqual(self.store.load(), [expected])
         loaded = self.store.load()
         loaded[0]['name'] = 'Outro'
         self.assertEqual(self.store.load(), [expected])
+
+    def test_services_roundtrip_and_reject_unknown(self):
+        for service in ('whatsapp', 'telegram', 'chatwoot'):
+            self.store.save([dict(self.record, service=service)])
+            self.assertEqual(self.store.load()[0]['service'], service)
+            self.assertEqual(self.store.load()[0]['id'], self.record['id'])
+        previous = self.store.config.read_bytes()
+        with self.assertRaises(ValueError):
+            self.store.save([dict(self.record, service='arbitrary')])
+        self.assertEqual(self.store.config.read_bytes(), previous)
 
     def test_invalid_file_preserved(self):
         for content in ('{', '{}', '[{"id": "../escape", "name":"Conta"}]'):
@@ -102,8 +112,8 @@ class ProfileStoreTests(unittest.TestCase):
                           avatar_data='data:image/png;base64,PRIVATE')
             self.store.save([record])
             loaded = self.store.load()[0]
-            self.assertEqual(loaded, dict(self.record, icon='home', archived=True, avatar_mode=mode))
-            self.assertEqual(set(loaded), {'id', 'name', 'icon', 'archived', 'avatar_mode'})
+            self.assertEqual(loaded, dict(self.record, icon='home', archived=True, avatar_mode=mode, service='whatsapp'))
+            self.assertEqual(set(loaded), {'id', 'name', 'icon', 'archived', 'avatar_mode', 'service'})
             self.assertNotIn('PRIVATE', self.store.config.read_text())
         self.assertFalse((self.store.data_dir / 'avatars').exists())
         self.assertFalse((self.store.data_dir / 'sessions').exists())

@@ -1,8 +1,36 @@
 # Central Chats
 
-Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado ao WhatsApp ou à Meta.
+Aplicativo comunitário para Linux: vários perfis de WhatsApp Web, Telegram e Chatwoot G3 dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado aos serviços integrados.
 
-**Versão 0.4.2 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+**Versão 0.5.0 — experimental.** Validado no Pop!_OS 22.04 x86_64 até as telas de entrada dos três serviços. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+
+## Serviços
+
+Em **Configurações (engrenagem) > Adicionar perfil**, escolha WhatsApp, Telegram ou Chatwoot G3 e dê um nome ao perfil. É possível criar várias contas de cada serviço. O Chatwoot abre `https://chatwoot.g3pi.app.br/`; o Telegram usa o cliente Web A oficial. Cada perfil mantém cookies e armazenamento próprios. Perfis antigos continuam sendo WhatsApp, com as mesmas sessões.
+
+O serviço de um perfil existente fica fixo: para outro serviço, adicione outro perfil. Fotos do computador e ícones funcionam em todos; foto automática está disponível somente no WhatsApp. Notificações dependem do suporte do serviço e da autorização no aplicativo e no sistema. Login, chamadas e notificações de contas reais precisam de validação pelo usuário.
+
+## Contas e notificações na barra
+
+Clique com o botão direito em um perfil para editar nome/ícone, escolher foto, recarregar, arquivar ou silenciar avisos do sistema. Isso abre as opções sem trocar a conversa visível. A engrenagem contém somente adicionar/restaurar perfis, preferências gerais e sair.
+
+Nas barras superior e inferior os títulos ficam em uma linha e o botão de expansão é oculto. A preferência de recolhimento é preservada para quando a barra voltar à esquerda.
+
+Uma bolinha laranja indica que a central recebeu uma notificação para aquele perfil enquanto ele não estava sendo visualizado. A engrenagem também recebe o indicador quando há algum perfil com notificação. Silenciar os avisos do sistema mantém essa sinalização. O indicador é limpo ao visualizar o perfil em uma janela ativa ou pelo menu do botão direito. Ele representa notificações recebidas nesta execução, não uma contagem de mensagens não lidas. Depende de o serviço enviar notificações e da permissão concedida; não lê conversas nem consulta mensagens por fora da sessão.
+
+## Identidade visual e navegação
+
+O visual usa ícones simbólicos próprios e uniformes, controles de 44 × 44 pixels na lateral e cabeçalhos de grupo separados da seleção. A barra horizontal ocupa 52 pixels, mantém nomes em uma linha e limita a largura das abas. Quando houver mais contas do que espaço, use as setas, a rolagem ou o teclado. Os nomes completos continuam nas dicas e nos rótulos acessíveis.
+
+Os perfis mantêm as mesmas sessões ao alternar layout. O menu do botão direito também pode ser aberto com a tecla Menu ou Shift+F10. Ajustar uma conta inativa por esse menu não a carrega em segundo plano.
+
+A logo aprovada, **Encontro**, representa dois balões azuis. O nome interno do arquivo do ícone e os identificadores de instalação foram mantidos para compatibilidade.
+
+## Aparência e organização
+
+Em **Configurações > Preferências**, escolha tema claro, escuro ou automático conforme o GNOME; posição da barra à esquerda, acima ou abaixo; e agrupamento sem grupos, por serviço ou personalizado. Para grupos personalizados, use **botão direito no perfil > Grupo personalizado** e informe o mesmo nome nas contas que devem ficar juntas. Perfis sem nome de grupo ficam em “Sem grupo”. A mudança de posição preserva as contas abertas. O tema das páginas de conversa é escolhido dentro de cada serviço.
+
+A versão 0.5.0 está disponível em [Releases](https://github.com/MatheusHSFeitosa/central-whatsapp/releases/tag/v0.5.0), com pacote DEB para Pop!_OS / Ubuntu 22.04 amd64.
 
 ## Recursos
 
@@ -20,7 +48,7 @@ Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mes
 
 ## Foto do perfil
 
-Selecione uma conta e abra **Menu > Foto do perfil**:
+Selecione uma conta e abra **botão direito no perfil > Foto do perfil**:
 
 - **Usar foto automática do WhatsApp**: tenta ler a própria foto já carregada no controle de perfil da conta. Não abre conversas, não consulta contatos e não faz downloads por fora da sessão. A detecção aceita controles de navegação acessíveis, inclusive abas e elementos role=button. Se o navegador bloquear leitura pelo canvas, pode usar uma captura local recortada da própria foto visível, sem capturar conversas ou mudar de conta. A detecção é experimental: mudanças de layout ou bloqueios do navegador podem impedir a leitura; nesse caso permanece o ícone (ou a última foto automática disponível).
 - **Usar foto do computador**: escolha PNG, JPEG ou WebP de até 10 MB. A central recorta o centro, normaliza para 256×256 e exibe um avatar circular na lateral expandida ou recolhida.
@@ -36,7 +64,7 @@ Abra **Menu > Preferências** para escolher:
 - **Iniciar com a janela oculta**: vale para o início automático; abrir pelo atalho sempre mostra a janela.
 - **Ao fechar a janela**: continuar em segundo plano ou sair.
 - **Carregar ao iniciar**: todos, somente os perfis marcados, ou nenhum. Contas não carregadas não emitem notificações.
-- **Avisos do sistema por perfil**: cada checkbox controla os avisos da sua conta no desktop. Sons de conversas e chamadas continuam controlados pelo próprio WhatsApp. O serviço do WhatsApp continua dependendo da conexão e das permissões concedidas.
+- **Avisos do sistema por perfil**: use o botão direito no perfil > Silenciar avisos do sistema. Sons de conversas e chamadas são controlados pelo próprio serviço. Receber avisos depende de a conta estar carregada, conectada e com as permissões concedidas.
 
 Padrões novos: início automático e oculto desativados, nenhum perfil pré-selecionado para carga e fechamento em segundo plano quando há meio de retorno. Não há suspensão dos perfis carregados ao ocultar: eles continuam consumindo recursos para receber mensagens.
 
@@ -51,10 +79,10 @@ A inicialização automática no **Flatpak** fica indisponível até implementar
 Baixe o `.deb` da versão desejada em **Releases** deste repositório. Em Pop!_OS / Ubuntu **22.04 amd64**, na pasta do arquivo:
 
 ```sh
-sudo apt install ./central-whatsapp_0.4.2_amd64.deb
+sudo apt install ./central-whatsapp_0.5.0_amd64.deb
 ```
 
-Abra **Central Chats** no menu. Clique em **Adicionar perfil**, informe um nome e conecte pelo celular. Cada perfil pode usar um número diferente.
+Abra **Central Chats** no menu. Em **Configurações > Adicionar perfil**, escolha o serviço e informe um nome. Entre na conta pela tela do serviço; cada perfil mantém uma sessão independente.
 
 Este é um arquivo local instalado pelo APT. **Ainda não existe repositório APT assinado para atualização automática.** O pacote atual depende de Python 3.10 e não se destina a Ubuntu 24.04 ou outras versões.
 
@@ -92,7 +120,7 @@ Com `flatpak-builder` instalado e Flathub configurado:
 
 ```sh
 sh scripts/build-flatpak.sh
-flatpak install --user ./dist/central-whatsapp_0.4.2_x86_64.flatpak
+flatpak install --user ./dist/central-whatsapp_0.5.0_x86_64.flatpak
 ```
 
 São necessários KDE SDK 6.11 e PySide BaseApp 6.11; o construtor pode obtê-los do Flathub. O teste precisa confirmar especialmente sandbox do Qt WebEngine, notificações e diálogos de arquivos. Não há instrução para desativar o sandbox. Chamadas de vídeo e câmera no Flatpak ainda não foram habilitadas/validadas.
@@ -103,6 +131,10 @@ São necessários KDE SDK 6.11 e PySide BaseApp 6.11; o construtor pode obtê-lo
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+.venv/bin/python tests/refined_ui_smoke.py
+.venv/bin/python tests/context_notifications_smoke.py
+.venv/bin/python tests/layout_smoke.py
+.venv/bin/python tests/services_smoke.py
 .venv/bin/python tests/smoke.py
 .venv/bin/python tests/activation_smoke.py
 .venv/bin/python tests/avatar_smoke.py
@@ -121,8 +153,8 @@ O fluxo GitHub Actions executa os testes de armazenamento e da interface sem log
 - Sessões são dados de autenticação: não envie essas pastas ao GitHub, nem compartilhe cópias.
 - Arquivar preserva o perfil e seu UUID. Use **Restaurar perfil** para abrir a mesma sessão; isso não desvincula o dispositivo no celular.
 - Perfis que foram removidos pela versão 0.1.0 já não possuem referência na configuração. Esta versão não tenta associar automaticamente pastas antigas a nomes de contas.
-- Para revogar uma sessão, use **WhatsApp > Aparelhos conectados** no celular.
-- As contas acessam diretamente os servidores do WhatsApp. A central não tem servidor próprio nem coleta própria de telemetria.
+- Para revogar uma sessão do WhatsApp, use **Aparelhos conectados** no celular; para os demais serviços, encerre a sessão nas configurações da própria conta.
+- As contas acessam diretamente os servidores de cada serviço. A central não tem servidor próprio nem coleta própria de telemetria.
 - O identificador `QtWebEngine` é removido do User-Agent para compatibilidade; a versão real do Chromium é mantida.
 - RAM/CPU crescem com o número de contas carregadas e a atividade de cada conta. Não foram medidos comparativos.
 - Notificações exigem permissão do site, suporte do sistema e a conta carregada no processo da central, visível ou em segundo plano. Em GNOME utiliza libnotify ou D-Bus, com alternativa pela bandeja quando disponível.
@@ -131,3 +163,7 @@ O fluxo GitHub Actions executa os testes de armazenamento e da interface sem log
 ## Licenças
 
 O código deste projeto está sob MIT. PySide6, Qt, Chromium e demais componentes mantêm suas próprias licenças; consulte os avisos distribuídos com as dependências. O nome WhatsApp identifica o serviço acessado e pertence aos seus titulares.
+
+### Runtime validado
+
+Esta versão fixa PySide6 6.11.3. A combinação local PySide6 6.12.0 + Python 3.10.12 apresentou erro de contagem de referências mesmo em chamadas mínimas de widgets, causando falha ao encerrar após várias mudanças de aparência. Os mesmos casos e o teste completo de layout encerraram normalmente com 6.11.3. Instalação por usuário e pacote DEB usam a versão fixada em `requirements.txt`.

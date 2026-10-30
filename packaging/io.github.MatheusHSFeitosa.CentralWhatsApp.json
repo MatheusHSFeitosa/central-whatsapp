@@ -25,6 +25,8 @@
         "install -Dm644 settings_store.py /app/share/central-whatsapp/settings_store.py",
         "install -Dm644 desktop_ui.py /app/share/central-whatsapp/desktop_ui.py",
         "install -Dm644 avatar_manager.py /app/share/central-whatsapp/avatar_manager.py",
+        "install -Dm644 services.py /app/share/central-whatsapp/services.py",
+        "install -Dm644 check-symbolic.svg /app/share/central-whatsapp/check-symbolic.svg",
         "install -Dm644 VERSION /app/share/central-whatsapp/VERSION",
         "install -Dm644 whatsapp-web.svg /app/share/central-whatsapp/whatsapp-web.svg",
         "install -Dm644 whatsapp-web.svg /app/share/icons/hicolor/scalable/apps/io.github.MatheusHSFeitosa.CentralWhatsApp.svg",

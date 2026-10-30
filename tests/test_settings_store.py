@@ -34,7 +34,9 @@ class SettingsTests(unittest.TestCase):
         for settings in ([], {'startup_enabled': 1}, {'start_hidden': 'yes'},
                          {'close_action': 'hide'}, {'startup_mode': 'invalid'},
                          {'startup_profiles': ['bad']}, {'muted_profiles': [identifier, identifier]},
-                         {'sidebar_collapsed': None}, {'unknown': True}):
+                         {'sidebar_collapsed': None}, {'theme':'blue'}, {'bar_position':'right'},
+                         {'group_mode':'invalid'}, {'profile_groups':{'bad':'Work'}},
+                         {'profile_groups':{identifier:'a'*41}}, {'unknown': True}):
             with self.subTest(settings=settings):
                 with self.assertRaises(ValueError):
                     self.store.save(settings)
@@ -43,6 +45,12 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.load()
         self.assertEqual(self.store.config.read_bytes(), b'{invalid')
+
+    def test_appearance_and_custom_groups_roundtrip(self):
+        identifier = str(uuid.uuid4())
+        settings = dict(DEFAULTS, theme='light', bar_position='top', group_mode='custom', profile_groups={identifier:'Trabalho'})
+        self.store.save(settings)
+        self.assertEqual(self.store.load(), settings)
 
     def test_selected_and_muted_profiles_roundtrip(self):
         identifier = str(uuid.uuid4())

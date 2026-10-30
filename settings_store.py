@@ -15,7 +15,8 @@ from profile_store import _canonical_id
 DEFAULTS = {
     'startup_enabled': False, 'start_hidden': False, 'close_action': 'background',
     'startup_mode': 'selected', 'startup_profiles': [], 'muted_profiles': [],
-    'sidebar_collapsed': False,
+    'sidebar_collapsed': False, 'theme': 'system', 'bar_position': 'left',
+    'group_mode': 'none', 'profile_groups': {},
 }
 MARKER = 'X-CentralWhatsApp-Managed=true'
 
@@ -34,6 +35,16 @@ def _validated(settings):
         raise ValueError('Ação de fechamento inválida')
     if result['startup_mode'] not in ('all', 'selected', 'none'):
         raise ValueError('Modo de inicialização inválido')
+    for key, allowed in [('theme', ('system','light','dark')), ('bar_position', ('left','top','bottom')), ('group_mode', ('none','service','custom'))]:
+        if result[key] not in allowed:
+            raise ValueError('Preferência inválida: ' + key)
+    groups = result['profile_groups']
+    if not isinstance(groups, dict):
+        raise ValueError('Grupos inválidos')
+    for key, value in groups.items():
+        _canonical_id(key)
+        if not isinstance(value, str) or len(value) > 40 or any(c in value for c in '\n\r\x00'):
+            raise ValueError('Nome de grupo inválido')
     for key in ('startup_profiles', 'muted_profiles'):
         values = result[key]
         if not isinstance(values, list):

@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory(prefix='central-whatsapp-smoke-') as data:
     os.environ['XDG_CONFIG_HOME'] = str(Path(data)/'xdg-config')
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from central import QApplication, QWebEngineView, Window, QInputDialog, QMessageBox, CONFIG
-    from PySide6.QtCore import QCoreApplication, QEvent, Qt
+    from PySide6.QtCore import QCoreApplication, QEvent, Qt, QEventLoop, QTimer
     from PySide6.QtGui import QCloseEvent
     from desktop_ui import PreferencesDialog
 
@@ -70,10 +70,10 @@ with tempfile.TemporaryDirectory(prefix='central-whatsapp-smoke-') as data:
         assert window.settings['sidebar_collapsed']
         assert window.sidebar.width() == 64
         assert window.list.item(0).text() == ''
-        assert window.list.item(0).toolTip() == 'Pessoal'
+        assert window.list.item(0).toolTip() == 'Pessoal · WhatsApp'
         assert window.list.item(0).data(Qt.ItemDataRole.AccessibleTextRole) == 'Pessoal'
         window.toggle_sidebar()
-        assert window.sidebar.width() == 220
+        assert window.sidebar.width() == 240
         assert window.list.item(0).text() == 'Pessoal'
         candidate = dict(window.settings, startup_enabled=False, start_hidden=False,
                          startup_mode='selected', startup_profiles=[second], muted_profiles=[first])
@@ -164,4 +164,8 @@ with tempfile.TemporaryDirectory(prefix='central-whatsapp-smoke-') as data:
         restored.close()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
+        # Destroy profile owners before removing temporary Chromium storage.
+        from shiboken6 import delete
+        for candidate_window in (window, restored, unloaded):delete(candidate_window)
+        flush = QEventLoop();QTimer.singleShot(500, flush.quit);flush.exec()
     print('PASS: CRUD, escrita, arquivo/restauro, ícones/sidebar/menu, preferências, fechamento seguro e isolamento')

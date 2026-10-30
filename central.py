@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from services import SERVICES, allows_url
 import json
 import re
 import shutil
@@ -12,8 +13,8 @@ from pathlib import Path
 from avatar_manager import AvatarManager, OWN_AVATAR_SCRIPT
 from profile_store import ProfileStore
 from settings_store import PreferencesStore, AutostartManager
-from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon
-from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect
+from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon, notification_icon
+from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect, QEvent
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
@@ -25,8 +26,12 @@ DATA = Path(os.environ.get('CENTRAL_WHATSAPP_DATA', str(Path(os.environ.get('XDG
 CONFIG = DATA/'profiles.json'
 
 class Page(QWebEnginePage):
+    def __init__(self, profile, parent=None, service="whatsapp"):
+        super().__init__(profile, parent)
+        self.service = service
+
     def acceptNavigationRequest(self, url, kind, main):
-        if url.scheme() == 'https' and url.host() == 'web.whatsapp.com':
+        if allows_url(self.service, url):
             return True
         if kind == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
             if url.scheme() in ('https', 'http', 'mailto'):
@@ -36,11 +41,13 @@ class Page(QWebEnginePage):
 class Window(DesktopUIMixin, QMainWindow):
     def __init__(self):
         super().__init__()
+        self._system_palette = QApplication.palette()
         self.setWindowTitle('Central Chats')
         self.resize(1250, 820)
         self.setWindowIcon(QIcon(str(Path(__file__).with_name('whatsapp-web.svg'))))
         self.views, self.profiles, self.load_states = {}, {}, {}
         self.notifications = []
+        self.pending_notifications = set()
         self.avatar_manager = AvatarManager(DATA)
         self.avatar_pending = set()
         self.confirm_close = True
@@ -59,6 +66,7 @@ class Window(DesktopUIMixin, QMainWindow):
             QMessageBox.critical(self, 'Dados indisponíveis', f'Os dados foram preservados. Não foi possível ler a configuração: {error}')
             raise SystemExit(1)
         self.build_ui()
+        QApplication.styleHints().colorSchemeChanged.connect(lambda *_: self.apply_gnome_style())
         self.setup_tray()
         self.refresh()
         self.avatar_timer = QTimer(self)
@@ -121,7 +129,12 @@ class Window(DesktopUIMixin, QMainWindow):
             QMessageBox.critical(self, 'Preferências não salvas', message)
             return False
         self.settings = candidate
-        self.apply_sidebar(self.settings['sidebar_collapsed'])
+        selected = self.selected_account()
+        key = selected['id'] if selected else None
+        self.sort_accounts()
+        row = next((i for i,a in enumerate(self.accounts) if a['id']==key), -1)
+        self.refresh(row)
+        self.apply_gnome_style()
         return True
 
     def show_preferences(self):
@@ -167,19 +180,101 @@ class Window(DesktopUIMixin, QMainWindow):
         selected = 0 <= self.list.currentRow() < len(self.accounts)
         for action in (self.photo_file_action, self.photo_auto_action, self.photo_icon_action):
             action.setEnabled(selected)
+        self.photo_auto_action.setEnabled(selected and self.accounts[self.list.currentRow()].get('service', 'whatsapp') == 'whatsapp')
         self.rename_button.setEnabled(selected)
         self.archive_button.setEnabled(selected)
-        self.reload_button.setEnabled(selected and isinstance(self.stack.currentWidget(), QWebEngineView))
+        self.reload_button.setEnabled(selected and self.accounts[self.list.currentRow()]['id'] in self.views)
         self.restore_button.setEnabled(bool(self.archived))
+        account = self.accounts[self.list.currentRow()] if selected else None
+        self.profile_header.setText(account['name']+' · '+SERVICES[account.get('service','whatsapp')]['name'] if account else 'Perfil')
+        self.group_action.setEnabled(selected)
+        self.mute_action.setEnabled(selected)
+        self.mute_action.setChecked(selected and self.accounts[self.list.currentRow()]['id'] in self.settings['muted_profiles'])
+        self.seen_action.setEnabled(selected and self.accounts[self.list.currentRow()]['id'] in self.pending_notifications)
+
+    def show_profile_menu(self, position):
+        item = self.list.profile_at(position)
+        if item is None:return
+        previous = self.selected_account()
+        previous_key = previous['id'] if previous else None
+        self.list.blockSignals(True)
+        self.list.setCurrentItem(item)
+        self.list.blockSignals(False)
+        self.update_actions()
+        self._profile_context_active = True
+        try:
+            self.profile_menu.exec(self.list.viewport().mapToGlobal(position))
+        finally:
+            self._profile_context_active = False
+            row = next((i for i,a in enumerate(self.accounts) if a['id']==previous_key), -1)
+            self.list.setCurrentRow(row)
+            if row >= 0:self.select(row)
+            else:self.stack.setCurrentIndex(0)
+            self.update_actions()
+
+    def set_profile_group(self):
+        account = self.selected_account()
+        if account is None:return
+        key = account['id']
+        groups = dict(self.settings.get('profile_groups', {}))
+        value, ok = QInputDialog.getText(self, 'Grupo personalizado',
+            'Nome do grupo (até 40 caracteres; vazio remove):', text=groups.get(key, ''))
+        if not ok:return
+        value = value.strip()
+        if value:groups[key] = value
+        else:groups.pop(key, None)
+        self.apply_preferences({'profile_groups':groups})
+
+    def toggle_profile_notifications(self, muted):
+        account = self.selected_account()
+        if account is None:return
+        keys = set(self.settings['muted_profiles'])
+        if muted: keys.add(account['id'])
+        else: keys.discard(account['id'])
+        self.apply_preferences({'muted_profiles':sorted(keys)})
+        self.update_actions()
+
+    def clear_selected_notification(self):
+        account = self.selected_account()
+        if account and account['id'] in self.pending_notifications:
+            self.pending_notifications.discard(account['id'])
+            self.apply_sidebar(self.settings['sidebar_collapsed'])
+            self.update_actions()
+
+    def viewing_profile(self, key):
+        return bool(key in self.views and self.stack.currentWidget() is self.views[key][0]
+                    and self.isVisible() and not self.isMinimized() and self.isActiveWindow())
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow() and hasattr(self, 'list'):
+            account = self.selected_account()
+            if account and self.viewing_profile(account['id']):self.clear_selected_notification()
+
+    def profile_group(self, account):
+        mode = self.settings.get('group_mode', 'none')
+        if mode == 'service':
+            return SERVICES[account.get('service','whatsapp')]['name']
+        if mode == 'custom':
+            return self.settings.get('profile_groups', {}).get(account['id'], '').strip() or 'Sem grupo'
+        return ''
+
+    def sort_accounts(self):
+        if self.settings.get('group_mode', 'none') != 'none':
+            self.accounts.sort(key=lambda a: (self.profile_group(a).casefold(), a['name'].casefold()))
 
     def refresh(self, row=-1):
+        key = self.accounts[row]['id'] if 0 <= row < len(self.accounts) else None
+        self.sort_accounts()
+        row = next((i for i,a in enumerate(self.accounts) if a['id']==key), -1)
         self.list.blockSignals(True); self.list.clear()
         self.list.addItems([a['name'] for a in self.accounts])
         for i, account in enumerate(self.accounts):
-            self.list.item(i).setToolTip(account['name'])
+            self.list.item(i).setToolTip(account['name']+' · '+SERVICES[account.get('service','whatsapp')]['name'])
             self.list.item(i).setIcon(self.account_icon(account))
-        self.list.blockSignals(False)
         self.list.setCurrentRow(row)
+        self.list.blockSignals(False)
+        if row >= 0 and not getattr(self, '_profile_context_active', False):self.select(row)
         if row < 0:
             self.stack.setCurrentIndex(0)
             self.status.setText('Selecione ou adicione um perfil')
@@ -201,10 +296,11 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def ask_profile(self, title, current=None):
         current = current or {'name':'', 'icon':'user'}
-        result = edit_profile_dialog(self, title, current['name'], current.get('icon', 'user'))
+        result = edit_profile_dialog(self, title, current['name'], current.get('icon', 'user'), current.get('service', 'whatsapp'), bool(current.get('id')))
         if result is None:
             return None
-        name, preset = result
+        name, preset = result[:2]
+        service = result[2] if len(result) > 2 else current.get("service", "whatsapp")
         name = name.strip()
         if not name or len(name) > 60:
             QMessageBox.information(self, 'Nome inválido', 'Informe um nome entre 1 e 60 caracteres.')
@@ -212,13 +308,13 @@ class Window(DesktopUIMixin, QMainWindow):
         if any(a['id'] != current.get('id') and a['name'].casefold() == name.casefold() for a in self.accounts):
             QMessageBox.information(self, 'Nome já usado', 'Escolha outro nome para o perfil.')
             return None
-        return name, preset
+        return name, preset, service
 
     def add(self):
         result = self.ask_profile('Adicionar perfil')
         if result is None:return
-        name, preset = result
-        accounts = self.accounts + [{'id':str(uuid.uuid4()), 'name':name, 'icon':preset}]
+        name, preset, service = result
+        accounts = self.accounts + [{'id':str(uuid.uuid4()), 'name':name, 'icon':preset, 'service':service, 'avatar_mode':'auto' if service=='whatsapp' else 'icon'}]
         if not self.save(accounts=accounts):return
         self.accounts = accounts
         self.refresh(len(accounts)-1)
@@ -228,7 +324,7 @@ class Window(DesktopUIMixin, QMainWindow):
         if row < 0:return
         result = self.ask_profile('Editar perfil', self.accounts[row])
         if result is None:return
-        name, preset = result
+        name, preset, service = result
         accounts = [dict(a) for a in self.accounts]
         accounts[row].update(name=name, icon=preset)
         if not self.save(accounts=accounts):return
@@ -239,7 +335,7 @@ class Window(DesktopUIMixin, QMainWindow):
         row = self.list.currentRow()
         if row < 0:return
         account = self.accounts[row]
-        answer = QMessageBox.question(self, 'Arquivar perfil', f'Arquivar {account["name"]}?\nA conta deixará de funcionar nesta central até ser restaurada. A sessão local será preservada.\nPara desvincular, use Aparelhos conectados no celular.')
+        answer = QMessageBox.question(self, 'Arquivar perfil', f'Arquivar {account["name"]}?\nA conta deixará de funcionar nesta central até ser restaurada. A sessão local será preservada.\nPara encerrar o acesso definitivamente, saia da conta pelo próprio serviço.')
         if answer != QMessageBox.StandardButton.Yes:return
         accounts = self.accounts[:row] + self.accounts[row+1:]
         archived = self.archived + [dict(account, archived=True)]
@@ -253,6 +349,7 @@ class Window(DesktopUIMixin, QMainWindow):
             view.page().deleteLater(); view.deleteLater()
             # Reutilizar o mesmo perfil ao restaurar evita abrir dois armazenamentos iguais.
         self.load_states.pop(account['id'], None)
+        self.pending_notifications.discard(account['id'])
         self.refresh()
 
     def restore(self):
@@ -279,6 +376,9 @@ class Window(DesktopUIMixin, QMainWindow):
         suffix = {'loading':' — Carregando…', 'error':' — Falha ao carregar. Verifique a conexão e recarregue.'}.get(self.load_states.get(key), '')
         self.status.setText(account['name'] + suffix)
         self.status.setToolTip(account['name'] + suffix)
+        self.status.setVisible(self.load_states.get(key)=='error' and self.settings.get('bar_position','left')=='left' and not self.settings['sidebar_collapsed'])
+        if self.load_states.get(key)=='error':
+            self.list.item(self.list.currentRow()).setToolTip(account['name']+suffix)
 
     def loading(self, key):
         if key not in self.views:return
@@ -312,14 +412,15 @@ class Window(DesktopUIMixin, QMainWindow):
             profile.setHttpCacheMaximumSize(100*1024*1024)
             profile.setHttpAcceptLanguage('pt-BR,pt;q=0.9,en;q=0.7')
             profile.setNotificationPresenter(lambda n,k=key:self.notify(k,n))
-            view=QWebEngineView(); page=Page(profile,view);view.setPage(page)
+            view=QWebEngineView(); page=Page(profile,view,account.get('service','whatsapp'));view.setPage(page)
             page.permissionRequested.connect(lambda permission,k=key:self.permission(k,permission))
             view.loadStarted.connect(lambda k=key:self.loading(k))
             view.loadFinished.connect(lambda ok,k=key:self.loaded(k,ok))
             self.views[key]=(view,profile);self.stack.addWidget(view)
             self.load_states[key] = 'loading'
-            view.load(QUrl('https://web.whatsapp.com/'))
+            view.load(QUrl(SERVICES[account.get('service','whatsapp')]['url']))
         self.stack.setCurrentWidget(self.views[key][0])
+        if self.viewing_profile(key):self.clear_selected_notification()
         self.update_status(key)
         self.update_actions()
 
@@ -332,8 +433,8 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def account_icon(self, account):
         fallback = icon(account.get('icon', 'user'))
-        if account.get('avatar_mode', 'auto') == 'icon':return fallback
-        return self.avatar_manager.icon(account['id'], fallback)
+        base = fallback if account.get('avatar_mode', 'auto') == 'icon' else self.avatar_manager.icon(account['id'], fallback)
+        return notification_icon(base, account['id'] in self.pending_notifications)
 
     def update_avatar_icon(self, key):
         for row, account in enumerate(self.accounts):
@@ -389,7 +490,7 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def refresh_avatar(self, key, explain=False):
         account=next((a for a in self.accounts if a['id']==key),None)
-        if not account or account.get('avatar_mode','auto')!='auto' or key not in self.views or key in self.avatar_pending:return
+        if not account or account.get('service','whatsapp')!='whatsapp' or account.get('avatar_mode','auto')!='auto' or key not in self.views or key in self.avatar_pending:return
         page=self.views[key][0].page()
         if page.url().host()!='web.whatsapp.com' or page.url().scheme()!='https':return
         self.avatar_pending.add(key)
@@ -424,26 +525,33 @@ class Window(DesktopUIMixin, QMainWindow):
                 else:
                     self.status.setText(current['name']+' — Foto automática indisponível.')
                     QMessageBox.information(self,'Foto automática indisponível',
-                        'Não foi possível identificar sua própria foto nesta tela. Confira se a conta está conectada e sua foto aparece na barra do WhatsApp. Você também pode usar Menu → Foto do perfil → Usar foto do computador.')
+                        'Não foi possível identificar sua própria foto nesta tela. Confira se a conta está conectada e sua foto aparece na barra do WhatsApp. Você também pode usar Botão direito no perfil → Foto do perfil → Usar foto do computador.')
         page.runJavaScript('JSON.stringify('+OWN_AVATAR_SCRIPT+')',received)
 
     def permission(self,key,permission):
-        if key not in self.views or permission.origin().scheme()!='https' or permission.origin().host()!='web.whatsapp.com':permission.deny();return
+        account=next((a for a in self.accounts if a['id']==key),None)
+        if key not in self.views or not account or not allows_url(account.get('service','whatsapp'), permission.origin()):permission.deny();return
         kind=permission.permissionType()
         allowed={QWebEnginePermission.PermissionType.Notifications:'mostrar notificações',QWebEnginePermission.PermissionType.MediaAudioCapture:'usar o microfone',QWebEnginePermission.PermissionType.MediaVideoCapture:'usar a câmera',QWebEnginePermission.PermissionType.MediaAudioVideoCapture:'usar câmera e microfone'}
         if kind not in allowed:permission.deny();return
         name=next((a['name'] for a in self.accounts if a['id']==key),'Perfil')
-        if QMessageBox.question(self,'Permissão do WhatsApp',f'{name}: permitir {allowed[kind]}?')==QMessageBox.StandardButton.Yes:permission.grant()
+        if QMessageBox.question(self,'Permissão do serviço',f'{name}: permitir {allowed[kind]}?')==QMessageBox.StandardButton.Yes:permission.grant()
         else:permission.deny()
 
     def notify(self,key,notification):
-        if key not in self.views or key in self.settings['muted_profiles']:
+        if key not in self.views:
+            notification.close(); return
+        if not self.viewing_profile(key):
+            self.pending_notifications.add(key)
+            self.apply_sidebar(self.settings['sidebar_collapsed'])
+            self.update_actions()
+        if key in self.settings['muted_profiles']:
             notification.close(); return
         name=next((a['name'] for a in self.accounts if a['id']==key),'WhatsApp')
         self.notifications.append(notification); notification.show()
         try:
             if shutil.which('notify-send'):
-                subprocess.Popen(['notify-send','--app-name=Central Chats','--icon=central-whatsapp',name+' · '+notification.title(),notification.message()],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                subprocess.Popen(['notify-send','--app-name=Central Chats','--icon=central-whatsapp','--',name+' · '+notification.title(),notification.message()],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             elif shutil.which('gdbus'):
                 subprocess.Popen(['gdbus','call','--session','--dest','org.freedesktop.Notifications','--object-path','/org/freedesktop/Notifications','--method','org.freedesktop.Notifications.Notify',json.dumps('Central Chats'),'0',json.dumps('central-whatsapp'),json.dumps(name+' · '+notification.title(),ensure_ascii=False),json.dumps(notification.message(),ensure_ascii=False),'[]','{}','-1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             else:
@@ -468,8 +576,8 @@ class Window(DesktopUIMixin, QMainWindow):
             QMessageBox.warning(self, 'Download interrompido', 'Não foi possível concluir o download. Tente novamente pelo WhatsApp.')
 
     def reload(self):
-        widget=self.stack.currentWidget()
-        if isinstance(widget,QWebEngineView):widget.reload()
+        account = self.selected_account()
+        if account and account['id'] in self.views:self.views[account['id']][0].reload()
 
     def cleanup(self):
         if self._cleaned:

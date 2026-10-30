@@ -12,7 +12,7 @@ else
     python3 -m venv "$base/build/build-env"
     "$base/build/build-env/bin/python" -m pip install --target "$stage/opt/central-whatsapp/lib" -r "$base/requirements.txt"
 fi
-install -m644 "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/VERSION" "$base/whatsapp-web.svg" "$stage/opt/central-whatsapp/"
+install -m644 "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$stage/opt/central-whatsapp/"
 install -m644 "$base/packaging/central-whatsapp.desktop" "$stage/usr/share/applications/"
 install -m644 "$base/whatsapp-web.svg" "$stage/usr/share/icons/hicolor/scalable/apps/central-whatsapp.svg"
 cat > "$stage/usr/bin/central-whatsapp" <<'LAUNCH'
@@ -29,8 +29,9 @@ Priority: optional
 Architecture: amd64
 Maintainer: Central Chats contributors
 Depends: python3 (>= 3.10), python3 (<< 3.11), libx11-xcb1, libxcb-shape0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xinerama0, libxcb-xkb1, libxkbcommon-x11-0, libnss3, libnspr4, libasound2, libdbus-1-3, libegl1, libgl1, libgbm1, libxcomposite1, libxdamage1, libxrandr2, libxtst6, libfontconfig1, libnotify-bin, libglib2.0-0
-Description: Central com perfis independentes do WhatsApp Web
- Aplicativo comunitario sem afiliacao com WhatsApp ou Meta.
+Description: Central de perfis independentes de conversas
+ WhatsApp Web, Telegram e Chatwoot na mesma janela.
+ Aplicativo comunitario sem afiliacao com os servicos integrados.
  Qt WebEngine integrado e armazenamento separado por perfil.
 CONTROL
 mkdir -p "$stage/usr/share/doc/central-whatsapp"

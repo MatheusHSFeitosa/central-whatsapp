@@ -1,5 +1,29 @@
 # Alterações
 
+## 0.5.0 — 30/10/2026
+
+- Visual aprovado com família simbólica uniforme, controles alinhados e grupos fora da seleção.
+- Barra horizontal reduzida a 52 px, abas de largura limitada e setas para percorrer perfis.
+- Menu de perfil com cabeçalho, hierarquia de ações e acesso por Menu/Shift+F10.
+- Ajustes de contas inativas pelo menu preservam seu carregamento sob demanda.
+- Logo Encontro, com dois balões azuis, aprovada e integrada.
+
+- Runtime fixado em PySide6 6.11.3 após comparação local reproduzir falha de referências em 6.12.0 com Python 3.10.
+- Barras horizontais sem expansão, títulos em linha única e faixa mais compacta.
+- Menu do botão direito por perfil, com foto, edição, recarregar, arquivar e silenciamento.
+- Indicador de notificações recebidas por conta e na engrenagem, inclusive com aviso do sistema silenciado.
+- Preservação de grupos, silenciamento e inicialização de perfis arquivados ao salvar preferências.
+- Notificações aceitam nomes de perfil começando com hífen.
+
+- Configurações no rodapé da barra e adicionar perfil dentro das configurações.
+- Ícone próprio de conversas, temas claro/escuro/automático GNOME e barra à esquerda, acima ou abaixo.
+- Agrupamento por serviço ou nomes de grupos personalizados definidos por perfil.
+
+- Perfis de WhatsApp, Telegram Web A e Chatwoot G3 na mesma central.
+- Seleção de serviço na criação, com sessões independentes e migração compatível dos perfis existentes.
+- Navegação e permissões restritas à origem HTTPS de cada serviço.
+- Fotos locais e ícones em todos os serviços; busca automática exclusiva do WhatsApp.
+
 ## 0.4.2 — 30/10/2026
 
 - Detecção da própria foto compatível com botões acessíveis e barras de abas.

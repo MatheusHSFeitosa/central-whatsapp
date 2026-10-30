@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import uuid
+from services import SERVICES
 from pathlib import Path
 
 ICONS = {'user': 'Pessoal', 'briefcase': 'Trabalho', 'store': 'Loja',
@@ -31,6 +32,9 @@ def _validate(records):
         name = record.get('name')
         archived = record.get('archived', False)
         icon = record.get('icon', 'user')
+        service = record.get('service', 'whatsapp')
+        if not isinstance(service, str) or service not in SERVICES:
+            raise ValueError('Serviço de perfil inválido')
         avatar_mode = record.get('avatar_mode', 'auto')
         if not isinstance(avatar_mode, str) or avatar_mode not in ('auto', 'file', 'icon'):
             raise ValueError('Modo de foto de perfil inválido')
@@ -49,7 +53,7 @@ def _validate(records):
         if not archived:
             active_names.add(name.casefold())
         result.append({'id': identifier, 'name': name, 'archived': archived,
-                       'icon': icon, 'avatar_mode': avatar_mode})
+                       'icon': icon, 'avatar_mode': avatar_mode, 'service': service})
     return result
 
 
