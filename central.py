@@ -9,6 +9,7 @@ import uuid
 import hashlib
 from copy import deepcopy
 from pathlib import Path
+from avatar_manager import AvatarManager, OWN_AVATAR_SCRIPT
 from profile_store import ProfileStore
 from settings_store import PreferencesStore, AutostartManager
 from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon
@@ -40,6 +41,8 @@ class Window(DesktopUIMixin, QMainWindow):
         self.setWindowIcon(QIcon(str(Path(__file__).with_name('whatsapp-web.svg'))))
         self.views, self.profiles, self.load_states = {}, {}, {}
         self.notifications = []
+        self.avatar_manager = AvatarManager(DATA)
+        self.avatar_pending = set()
         self.confirm_close = True
         self.activation_ready = False
         self._quitting = False
@@ -58,6 +61,9 @@ class Window(DesktopUIMixin, QMainWindow):
         self.build_ui()
         self.setup_tray()
         self.refresh()
+        self.avatar_timer = QTimer(self)
+        self.avatar_timer.timeout.connect(self.poll_avatars)
+        self.avatar_timer.start(30000)
 
     def setup_tray(self):
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
@@ -159,6 +165,8 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def update_actions(self):
         selected = 0 <= self.list.currentRow() < len(self.accounts)
+        for action in (self.photo_file_action, self.photo_auto_action, self.photo_icon_action):
+            action.setEnabled(selected)
         self.rename_button.setEnabled(selected)
         self.archive_button.setEnabled(selected)
         self.reload_button.setEnabled(selected and isinstance(self.stack.currentWidget(), QWebEngineView))
@@ -169,7 +177,7 @@ class Window(DesktopUIMixin, QMainWindow):
         self.list.addItems([a['name'] for a in self.accounts])
         for i, account in enumerate(self.accounts):
             self.list.item(i).setToolTip(account['name'])
-            self.list.item(i).setIcon(icon(account.get('icon', 'user')))
+            self.list.item(i).setIcon(self.account_icon(account))
         self.list.blockSignals(False)
         self.list.setCurrentRow(row)
         if row < 0:
@@ -319,6 +327,81 @@ class Window(DesktopUIMixin, QMainWindow):
         if key not in self.views:return
         self.load_states[key] = 'ready' if ok else 'error'
         self.update_status(key)
+        if ok:
+            QTimer.singleShot(1500, lambda k=key:self.refresh_avatar(k))
+
+    def account_icon(self, account):
+        fallback = icon(account.get('icon', 'user'))
+        if account.get('avatar_mode', 'auto') == 'icon':return fallback
+        return self.avatar_manager.icon(account['id'], fallback)
+
+    def update_avatar_icon(self, key):
+        for row, account in enumerate(self.accounts):
+            if account['id'] == key:self.list.item(row).setIcon(self.account_icon(account))
+
+    def selected_account(self):
+        row=self.list.currentRow()
+        return self.accounts[row] if 0 <= row < len(self.accounts) else None
+
+    def set_avatar_mode(self, key, mode):
+        accounts=[dict(a, avatar_mode=mode) if a['id']==key else dict(a) for a in self.accounts]
+        if not self.save(accounts=accounts):return False
+        self.accounts=accounts
+        self.update_avatar_icon(key)
+        return True
+
+    def choose_profile_photo(self):
+        account=self.selected_account()
+        if account is None:return
+        path,_=QFileDialog.getOpenFileName(self,'Escolher foto do perfil',str(Path.home()),'Imagens (*.png *.jpg *.jpeg *.webp)')
+        if not path:return
+        key=account['id']
+        # Mantém tanto o arquivo anterior quanto a configuração se a gravação falhar.
+        target=self.avatar_manager.path(key)
+        try:
+            previous=target.read_bytes() if target.exists() else None
+            self.avatar_manager.import_file(key,path)
+            if not self.set_avatar_mode(key,'file'):
+                if previous is None:self.avatar_manager.remove(key)
+                else:target.write_bytes(previous);target.chmod(0o600)
+        except (ValueError,OSError) as error:
+            QMessageBox.warning(self,'Foto não alterada',str(error))
+
+    def use_profile_icon(self):
+        account=self.selected_account()
+        if account:self.set_avatar_mode(account['id'],'icon')
+
+    def use_automatic_photo(self):
+        account=self.selected_account()
+        if account is None:return
+        key=account['id']
+        if self.set_avatar_mode(key,'auto'):
+            if account.get('avatar_mode','auto')!='auto':
+                try:self.avatar_manager.remove(key)
+                except OSError:pass
+                self.update_avatar_icon(key)
+            self.refresh_avatar(key)
+            self.status.setText(account['name']+' — Buscando sua foto; o ícone será usado se ela não estiver disponível.')
+
+    def poll_avatars(self):
+        for account in self.accounts:
+            if account.get('avatar_mode','auto')=='auto':self.refresh_avatar(account['id'])
+
+    def refresh_avatar(self, key):
+        account=next((a for a in self.accounts if a['id']==key),None)
+        if not account or account.get('avatar_mode','auto')!='auto' or key not in self.views or key in self.avatar_pending:return
+        page=self.views[key][0].page()
+        if page.url().host()!='web.whatsapp.com' or page.url().scheme()!='https':return
+        self.avatar_pending.add(key)
+        def received(value):
+            self.avatar_pending.discard(key)
+            current=next((a for a in self.accounts if a['id']==key),None)
+            if not current or current.get('avatar_mode','auto')!='auto' or key not in self.views or not value:return
+            try:
+                self.avatar_manager.save_data_url(key,value)
+                self.update_avatar_icon(key)
+            except (ValueError,OSError):pass
+        page.runJavaScript(OWN_AVATAR_SCRIPT,received)
 
     def permission(self,key,permission):
         if key not in self.views or permission.origin().scheme()!='https' or permission.origin().host()!='web.whatsapp.com':permission.deny();return
@@ -368,6 +451,7 @@ class Window(DesktopUIMixin, QMainWindow):
         if self._cleaned:
             return
         self._cleaned = True
+        self.avatar_timer.stop()
         self.tray.hide()
         for notification in list(self.notifications):
             self.finish_notification(notification)

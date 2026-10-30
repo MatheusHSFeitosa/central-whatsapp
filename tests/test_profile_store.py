@@ -21,7 +21,7 @@ class ProfileStoreTests(unittest.TestCase):
     def test_missing_and_old_format(self):
         self.assertEqual(self.store.load(), [])
         self.store.config.write_text(json.dumps([self.record]), encoding='utf-8')
-        expected = dict(self.record, archived=False, icon='user')
+        expected = dict(self.record, archived=False, icon='user', avatar_mode='auto')
         self.assertEqual(self.store.load(), [expected])
         loaded = self.store.load()
         loaded[0]['name'] = 'Outro'
@@ -94,6 +94,32 @@ class ProfileStoreTests(unittest.TestCase):
         for icon in ICONS:
             self.store.save([dict(self.record, icon=icon)])
             self.assertEqual(self.store.load()[0]['icon'], icon)
+
+    def test_avatar_modes_preserve_metadata_without_paths(self):
+        for mode in ('auto', 'file', 'icon'):
+            record = dict(self.record, icon='home', archived=True, avatar_mode=mode,
+                          avatar_path='/tmp/private.png', avatar_url='https://example.invalid/photo',
+                          avatar_data='data:image/png;base64,PRIVATE')
+            self.store.save([record])
+            loaded = self.store.load()[0]
+            self.assertEqual(loaded, dict(self.record, icon='home', archived=True, avatar_mode=mode))
+            self.assertEqual(set(loaded), {'id', 'name', 'icon', 'archived', 'avatar_mode'})
+            self.assertNotIn('PRIVATE', self.store.config.read_text())
+        self.assertFalse((self.store.data_dir / 'avatars').exists())
+        self.assertFalse((self.store.data_dir / 'sessions').exists())
+
+    def test_invalid_avatar_modes_preserve_previous(self):
+        self.store.save([self.record])
+        previous = self.store.config.read_bytes()
+        for mode in (None, True, 1, [], {}, 'photo', 'AUTO', '/tmp/photo.png'):
+            with self.subTest(mode=mode):
+                with self.assertRaises(ValueError):
+                    self.store.save([dict(self.record, avatar_mode=mode)])
+                self.assertEqual(self.store.config.read_bytes(), previous)
+                self.store.config.write_text(json.dumps([dict(self.record, avatar_mode=mode)]))
+                with self.assertRaises(ValueError):
+                    self.store.load()
+                self.store.config.write_bytes(previous)
 
 
 if __name__ == '__main__':

@@ -48,6 +48,20 @@ with tempfile.TemporaryDirectory(prefix='central-whatsapp-smoke-') as data:
         assert window.accounts[1]['name'] == 'Empresa'
 
         assert window.accounts[1]['icon'] == 'briefcase'
+        from PySide6.QtGui import QImage
+        local_photo = Path(data)/'local-photo.png'
+        photo = QImage(320,240,QImage.Format.Format_RGB32);photo.fill(0xff2978bd);photo.save(str(local_photo))
+        with patch('central.QFileDialog.getOpenFileName',return_value=(str(local_photo),'PNG')):
+            window.choose_profile_photo()
+        assert window.accounts[1]['avatar_mode'] == 'file'
+        assert window.avatar_manager.load(second).width() == 256
+        assert window.photo_file_action.isEnabled()
+        window.use_profile_icon()
+        assert window.accounts[1]['avatar_mode'] == 'icon'
+        window.use_automatic_photo()
+        assert window.accounts[1]['avatar_mode'] == 'auto'
+        assert not window.avatar_manager.path(second).exists()
+
         assert not window.list.item(1).icon().isNull()
         for button in [window.sidebar_toggle, window.add_button, window.reload_button, window.menu_button]:
             assert not button.icon().isNull()

@@ -31,6 +31,9 @@ def _validate(records):
         name = record.get('name')
         archived = record.get('archived', False)
         icon = record.get('icon', 'user')
+        avatar_mode = record.get('avatar_mode', 'auto')
+        if not isinstance(avatar_mode, str) or avatar_mode not in ('auto', 'file', 'icon'):
+            raise ValueError('Modo de foto de perfil inválido')
         if not isinstance(icon, str) or icon not in ICONS:
             raise ValueError('Ícone de perfil inválido')
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 60:
@@ -45,7 +48,8 @@ def _validate(records):
         identifiers.add(identifier)
         if not archived:
             active_names.add(name.casefold())
-        result.append({'id': identifier, 'name': name, 'archived': archived, 'icon': icon})
+        result.append({'id': identifier, 'name': name, 'archived': archived,
+                       'icon': icon, 'avatar_mode': avatar_mode})
     return result
 
 

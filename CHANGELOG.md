@@ -1,5 +1,13 @@
 # Alterações
 
+## 0.4.0 — 30/10/2026
+
+- Fotos circulares por perfil, com imagem local e retorno ao ícone.
+- Tentativa automática restrita ao controle da própria conta no WhatsApp, com fallback e sem requisições externas adicionais.
+- Normalização local de imagens, limites de tamanho e arquivos privados por UUID.
+- Compatibilidade com perfis existentes e testes para não selecionar fotos de contatos.
+- Detecção automática ainda experimental; compatibilidade com conta autenticada não foi confirmada.
+
 ## 0.3.1 — 30/10/2026
 
 - Contorno do ícone centralizado e proporções corrigidas, mantendo as cores e o estilo.
