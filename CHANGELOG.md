@@ -1,5 +1,9 @@
 # Alterações
 
+## 0.3.1 — 30/10/2026
+
+- Contorno do ícone centralizado e proporções corrigidas, mantendo as cores e o estilo.
+
 ## 0.3.0 — 30/10/2026
 
 - Interface inspirada no GNOME, lateral retrátil, ações no menu e seis ícones por perfil.

@@ -2,7 +2,7 @@
 
 Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado ao WhatsApp ou à Meta.
 
-**Versão 0.3.0 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+**Versão 0.3.1 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
 
 ## Recursos
 
@@ -41,7 +41,7 @@ A inicialização automática no **Flatpak** fica indisponível até implementar
 Baixe o `.deb` da versão desejada em **Releases** deste repositório. Em Pop!_OS / Ubuntu **22.04 amd64**, na pasta do arquivo:
 
 ```sh
-sudo apt install ./central-whatsapp_0.3.0_amd64.deb
+sudo apt install ./central-whatsapp_0.3.1_amd64.deb
 ```
 
 Abra **Central WhatsApp** no menu. Clique em **Adicionar perfil**, informe um nome e conecte pelo celular. Cada perfil pode usar um número diferente.
@@ -82,7 +82,7 @@ Com `flatpak-builder` instalado e Flathub configurado:
 
 ```sh
 sh scripts/build-flatpak.sh
-flatpak install --user ./dist/central-whatsapp_0.3.0_x86_64.flatpak
+flatpak install --user ./dist/central-whatsapp_0.3.1_x86_64.flatpak
 ```
 
 São necessários KDE SDK 6.11 e PySide BaseApp 6.11; o construtor pode obtê-los do Flathub. O teste precisa confirmar especialmente sandbox do Qt WebEngine, notificações e diálogos de arquivos. Não há instrução para desativar o sandbox. Chamadas de vídeo e câmera no Flatpak ainda não foram habilitadas/validadas.
