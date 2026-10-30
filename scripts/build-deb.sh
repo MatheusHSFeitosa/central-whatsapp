@@ -28,7 +28,7 @@ Section: net
 Priority: optional
 Architecture: amd64
 Maintainer: Central WhatsApp contributors
-Depends: python3 (>= 3.10), python3 (<< 3.11), libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xinerama0, libxcb-xkb1, libxkbcommon-x11-0, libnss3, libnspr4, libasound2, libdbus-1-3, libegl1, libgl1, libxcomposite1, libxdamage1, libxrandr2, libxtst6, libfontconfig1, libnotify-bin, libglib2.0-0
+Depends: python3 (>= 3.10), python3 (<< 3.11), libx11-xcb1, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xinerama0, libxcb-xkb1, libxkbcommon-x11-0, libnss3, libnspr4, libasound2, libdbus-1-3, libegl1, libgl1, libgbm1, libxcomposite1, libxdamage1, libxrandr2, libxtst6, libfontconfig1, libnotify-bin, libglib2.0-0
 Description: Central com perfis independentes do WhatsApp Web
  Aplicativo comunitario sem afiliacao com WhatsApp ou Meta.
  Qt WebEngine integrado e armazenamento separado por perfil.

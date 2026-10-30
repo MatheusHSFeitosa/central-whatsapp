@@ -36,7 +36,7 @@ class Window(QMainWindow):
         self.views = {}
         self.profiles = {}
         self.load_states = {}
-        self.setStyleSheet("QMainWindow { background: #172126; color: #e9efed; } QWidget { font-size: 14px; } QListWidget { background: #202e34; color: #e9efed; border: none; border-radius: 8px; padding: 6px; } QListWidget::item { padding: 13px 10px; } QListWidget::item:selected { background: #145c47; color: #ffffff; border-radius: 6px; } QPushButton { background: #263a40; color: #e9efed; border: 1px solid #43545a; border-radius: 7px; padding: 8px; } QPushButton:hover { background: #345149; } QLabel { color: #e9efed; }")
+        self.setStyleSheet("QMainWindow { background: #172126; color: #e9efed; } QWidget { font-size: 14px; } QListWidget { background: #202e34; color: #e9efed; border: none; border-radius: 8px; padding: 6px; } QListWidget::item { padding: 13px 10px; } QListWidget::item:selected { background: #145c47; color: #ffffff; border-radius: 6px; } QPushButton { background: #263a40; color: #e9efed; border: 1px solid #43545a; border-radius: 7px; padding: 8px; } QPushButton:hover { background: #345149; } QPushButton:disabled { background: #202d32; color: #89969b; border-color: #344349; } QLabel { color: #e9efed; }")
         self.notifications = []
         self.confirm_close = True
         try:
@@ -59,7 +59,9 @@ class Window(QMainWindow):
         add_button = QPushButton('+ Adicionar perfil')
         for button, fn in [(add_button,self.add),(self.rename_button,self.rename),(self.archive_button,self.remove),(self.restore_button,self.restore)]:
             button.setMinimumHeight(36); button.clicked.connect(fn); side.addWidget(button)
-        side.addWidget(QLabel('Contas carregadas permanecem\nativas enquanto a central estiver aberta.'))
+        hint = QLabel('Contas carregadas permanecem\nativas enquanto a central estiver aberta.')
+        hint.setWordWrap(True); hint.setMaximumWidth(205)
+        side.addWidget(hint)
         right=QVBoxLayout(); layout.addLayout(right,1)
         bar=QHBoxLayout(); right.addLayout(bar)
         self.status=QLabel('Selecione ou adicione um perfil'); bar.addWidget(self.status,1)
