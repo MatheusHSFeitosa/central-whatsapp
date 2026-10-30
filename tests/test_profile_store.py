@@ -21,7 +21,7 @@ class ProfileStoreTests(unittest.TestCase):
     def test_missing_and_old_format(self):
         self.assertEqual(self.store.load(), [])
         self.store.config.write_text(json.dumps([self.record]), encoding='utf-8')
-        expected = dict(self.record, archived=False)
+        expected = dict(self.record, archived=False, icon='user')
         self.assertEqual(self.store.load(), [expected])
         loaded = self.store.load()
         loaded[0]['name'] = 'Outro'
@@ -42,6 +42,7 @@ class ProfileStoreTests(unittest.TestCase):
                    [dict(self.record, id='AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA')],
                    [dict(self.record, name=' ')], [dict(self.record, name='a' * 61)],
                    [dict(self.record, archived=1)], [self.record, self.record],
+                   [dict(self.record, icon='unknown')],
                    [self.record, dict(self.record, id=str(uuid.uuid4()), name='pEsSoAl')]]
         for records in invalid:
             with self.subTest(records=records):
@@ -87,6 +88,12 @@ class ProfileStoreTests(unittest.TestCase):
         self.assertEqual(self.store.load()[0]['name'], 'Pessoal')
         self.assertEqual(record['name'], '  Pessoal  ')
         self.assertNotIn('archived', record)
+
+    def test_icon_presets_persist(self):
+        from profile_store import ICONS
+        for icon in ICONS:
+            self.store.save([dict(self.record, icon=icon)])
+            self.assertEqual(self.store.load()[0]['icon'], icon)
 
 
 if __name__ == '__main__':

@@ -6,12 +6,17 @@ import subprocess
 import os
 import sys
 import uuid
+import hashlib
+from copy import deepcopy
 from pathlib import Path
 from profile_store import ProfileStore
-from PySide6.QtCore import QUrl, QLockFile, QTimer
+from settings_store import PreferencesStore, AutostartManager
+from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon
+from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
- QListWidget, QPushButton, QLabel, QStackedWidget, QInputDialog, QMessageBox, QFileDialog, QSystemTrayIcon)
+ QListWidget, QPushButton, QLabel, QStackedWidget, QInputDialog, QMessageBox, QFileDialog, QSystemTrayIcon, QMenu, QDialog)
 from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEnginePermission
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
@@ -27,54 +32,119 @@ class Page(QWebEnginePage):
                 QDesktopServices.openUrl(url)
         return False
 
-class Window(QMainWindow):
+class Window(DesktopUIMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Central WhatsApp')
         self.resize(1250, 820)
         self.setWindowIcon(QIcon(str(Path(__file__).with_name('whatsapp-web.svg'))))
-        self.views = {}
-        self.profiles = {}
-        self.load_states = {}
-        self.setStyleSheet("QMainWindow { background: #172126; color: #e9efed; } QWidget { font-size: 14px; } QListWidget { background: #202e34; color: #e9efed; border: none; border-radius: 8px; padding: 6px; } QListWidget::item { padding: 13px 10px; } QListWidget::item:selected { background: #145c47; color: #ffffff; border-radius: 6px; } QPushButton { background: #263a40; color: #e9efed; border: 1px solid #43545a; border-radius: 7px; padding: 8px; } QPushButton:hover { background: #345149; } QPushButton:disabled { background: #202d32; color: #89969b; border-color: #344349; } QLabel { color: #e9efed; }")
+        self.views, self.profiles, self.load_states = {}, {}, {}
         self.notifications = []
         self.confirm_close = True
+        self.activation_ready = False
+        self._quitting = False
+        self._cleaned = False
         try:
             self.store = ProfileStore(DATA)
             records = self.store.load()
             self.accounts = [a for a in records if not a.get('archived', False)]
             self.archived = [a for a in records if a.get('archived', False)]
-        except Exception as e:
-            QMessageBox.critical(self, 'Configuração inválida', f'Os perfis foram preservados. Não foi possível ler a configuração: {e}')
+            self.preferences_store = PreferencesStore(DATA)
+            self.settings = self.preferences_store.load()
+            self.autostart_manager = AutostartManager()
+        except (ValueError, OSError) as error:
+            QMessageBox.critical(self, 'Dados indisponíveis', f'Os dados foram preservados. Não foi possível ler a configuração: {error}')
             raise SystemExit(1)
-        root = QWidget(); self.setCentralWidget(root)
-        layout = QHBoxLayout(root)
-        side = QVBoxLayout(); layout.addLayout(side)
-        title = QLabel('Central WhatsApp'); title.setStyleSheet('font-size:20px;font-weight:600;padding:12px 0')
-        side.addWidget(title)
-        self.list = QListWidget(); self.list.setAccessibleName('Perfis do WhatsApp'); self.list.setFixedWidth(205); side.addWidget(self.list)
-        self.rename_button = QPushButton('Renomear')
-        self.archive_button = QPushButton('Arquivar perfil')
-        self.restore_button = QPushButton('Restaurar perfil')
-        add_button = QPushButton('+ Adicionar perfil')
-        for button, fn in [(add_button,self.add),(self.rename_button,self.rename),(self.archive_button,self.remove),(self.restore_button,self.restore)]:
-            button.setMinimumHeight(36); button.clicked.connect(fn); side.addWidget(button)
-        hint = QLabel('Contas carregadas permanecem\nativas enquanto a central estiver aberta.')
-        hint.setWordWrap(True); hint.setMaximumWidth(205)
-        side.addWidget(hint)
-        right=QVBoxLayout(); layout.addLayout(right,1)
-        bar=QHBoxLayout(); right.addLayout(bar)
-        self.status=QLabel('Selecione ou adicione um perfil'); bar.addWidget(self.status,1)
-        self.reload_button=QPushButton('Recarregar'); self.reload_button.clicked.connect(self.reload); bar.addWidget(self.reload_button)
-        self.stack=QStackedWidget(); right.addWidget(self.stack,1)
-        welcome=QLabel('Seus WhatsApps, em um só lugar.\n\nAdicione um perfil e conecte pelo QR Code.'); welcome.setStyleSheet('padding:40px;font-size:18px')
-        self.stack.addWidget(welcome)
-        self.tray=QSystemTrayIcon(self.windowIcon(),self)
-        self.tray.setToolTip('Central WhatsApp')
-        self.tray.activated.connect(lambda reason: (self.showNormal(), self.raise_(), self.activateWindow()))
-        if QSystemTrayIcon.isSystemTrayAvailable(): self.tray.show()
-        self.list.currentRowChanged.connect(self.select)
+        self.build_ui()
+        self.setup_tray()
         self.refresh()
+
+    def setup_tray(self):
+        self.tray = QSystemTrayIcon(self.windowIcon(), self)
+        self.tray.setToolTip('Central WhatsApp')
+        menu = QMenu(self)
+        menu.addAction('Abrir central', self.show_window)
+        menu.addAction('Preferências…', self.show_preferences)
+        menu.addSeparator()
+        menu.addAction('Sair da central', self.quit_app)
+        self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self.tray_activated)
+        # O Qt também registra o ícone se uma bandeja surgir depois.
+        self.tray.show()
+
+    def tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.show_window()
+
+    def show_window(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def can_background(self):
+        launcher = bool(os.environ.get('FLATPAK_ID')) or any(
+            path.is_file() and os.access(path, os.X_OK)
+            for path in (Path.home()/'.local/bin/central-whatsapp', Path('/usr/bin/central-whatsapp')))
+        return QSystemTrayIcon.isSystemTrayAvailable() or (self.activation_ready and launcher)
+
+    def apply_preferences(self, candidate):
+        candidate = deepcopy({**self.settings, **candidate})
+        snapshot = None
+        captured = False
+        autostart_changed = candidate.get('startup_enabled') != self.settings['startup_enabled']
+        try:
+            if candidate.get('startup_enabled') and os.environ.get('FLATPAK_ID'):
+                raise ValueError('Inicialização automática via Flatpak ainda não disponível nesta versão.')
+            if candidate.get('start_hidden') and not self.can_background():
+                raise ValueError('Não há um meio confirmado de reabrir a central nesta sessão.')
+            if autostart_changed:
+                snapshot = self.autostart_manager.capture()
+                captured = True
+                self.autostart_manager.sync(candidate['startup_enabled'])
+            self.preferences_store.save(candidate)
+        except (ValueError, OSError) as error:
+            rollback_error = None
+            if autostart_changed and captured:
+                try:
+                    self.autostart_manager.restore(snapshot)
+                except (ValueError, OSError) as failure:
+                    rollback_error = failure
+            message = f'Não foi possível salvar as preferências. {error}'
+            if rollback_error:
+                message += f' Verifique a inicialização automática: {rollback_error}'
+            QMessageBox.critical(self, 'Preferências não salvas', message)
+            return False
+        self.settings = candidate
+        self.apply_sidebar(self.settings['sidebar_collapsed'])
+        return True
+
+    def show_preferences(self):
+        self.show_window()
+        dialog = PreferencesDialog(self, self.settings, self.accounts, self.can_background())
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.apply_preferences(dialog.values())
+
+    def toggle_sidebar(self):
+        candidate = dict(self.settings)
+        candidate['sidebar_collapsed'] = not candidate['sidebar_collapsed']
+        self.apply_preferences(candidate)
+
+    def load_startup_profiles(self):
+        mode = self.settings['startup_mode']
+        selected = set(self.settings['startup_profiles'])
+        rows = [i for i, account in enumerate(self.accounts)
+                if mode == 'all' or (mode == 'selected' and account['id'] in selected)]
+        for row in rows:
+            self.list.setCurrentRow(row)
+        if rows:
+            self.list.setCurrentRow(rows[0])
+
+    def start(self, autostart=False):
+        self.load_startup_profiles()
+        if autostart and self.settings['start_hidden'] and self.can_background():
+            self.hide()
+        else:
+            self.show_window()
 
     def save(self, accounts=None, archived=None):
         accounts = self.accounts if accounts is None else accounts
@@ -99,11 +169,13 @@ class Window(QMainWindow):
         self.list.addItems([a['name'] for a in self.accounts])
         for i, account in enumerate(self.accounts):
             self.list.item(i).setToolTip(account['name'])
+            self.list.item(i).setIcon(icon(account.get('icon', 'user')))
         self.list.blockSignals(False)
         self.list.setCurrentRow(row)
         if row < 0:
             self.stack.setCurrentIndex(0)
             self.status.setText('Selecione ou adicione um perfil')
+        self.apply_sidebar(self.settings['sidebar_collapsed'])
         self.update_actions()
 
     def ask_name(self, title, current='', exclude=None):
@@ -119,10 +191,26 @@ class Window(QMainWindow):
             return None
         return name
 
+    def ask_profile(self, title, current=None):
+        current = current or {'name':'', 'icon':'user'}
+        result = edit_profile_dialog(self, title, current['name'], current.get('icon', 'user'))
+        if result is None:
+            return None
+        name, preset = result
+        name = name.strip()
+        if not name or len(name) > 60:
+            QMessageBox.information(self, 'Nome inválido', 'Informe um nome entre 1 e 60 caracteres.')
+            return None
+        if any(a['id'] != current.get('id') and a['name'].casefold() == name.casefold() for a in self.accounts):
+            QMessageBox.information(self, 'Nome já usado', 'Escolha outro nome para o perfil.')
+            return None
+        return name, preset
+
     def add(self):
-        name = self.ask_name('Adicionar perfil')
-        if name is None:return
-        accounts = self.accounts + [{'id':str(uuid.uuid4()), 'name':name}]
+        result = self.ask_profile('Adicionar perfil')
+        if result is None:return
+        name, preset = result
+        accounts = self.accounts + [{'id':str(uuid.uuid4()), 'name':name, 'icon':preset}]
         if not self.save(accounts=accounts):return
         self.accounts = accounts
         self.refresh(len(accounts)-1)
@@ -130,10 +218,11 @@ class Window(QMainWindow):
     def rename(self):
         row = self.list.currentRow()
         if row < 0:return
-        name = self.ask_name('Renomear perfil', self.accounts[row]['name'], self.accounts[row]['id'])
-        if name is None:return
+        result = self.ask_profile('Editar perfil', self.accounts[row])
+        if result is None:return
+        name, preset = result
         accounts = [dict(a) for a in self.accounts]
-        accounts[row]['name'] = name
+        accounts[row].update(name=name, icon=preset)
         if not self.save(accounts=accounts):return
         self.accounts = accounts
         self.refresh(row)
@@ -232,7 +321,7 @@ class Window(QMainWindow):
         self.update_status(key)
 
     def permission(self,key,permission):
-        if key not in self.views or permission.origin().host()!='web.whatsapp.com':permission.deny();return
+        if key not in self.views or permission.origin().scheme()!='https' or permission.origin().host()!='web.whatsapp.com':permission.deny();return
         kind=permission.permissionType()
         allowed={QWebEnginePermission.PermissionType.Notifications:'mostrar notificações',QWebEnginePermission.PermissionType.MediaAudioCapture:'usar o microfone',QWebEnginePermission.PermissionType.MediaVideoCapture:'usar a câmera',QWebEnginePermission.PermissionType.MediaAudioVideoCapture:'usar câmera e microfone'}
         if kind not in allowed:permission.deny();return
@@ -241,7 +330,7 @@ class Window(QMainWindow):
         else:permission.deny()
 
     def notify(self,key,notification):
-        if key not in self.views:
+        if key not in self.views or key in self.settings['muted_profiles']:
             notification.close(); return
         name=next((a['name'] for a in self.accounts if a['id']==key),'WhatsApp')
         self.notifications.append(notification); notification.show()
@@ -275,22 +364,135 @@ class Window(QMainWindow):
         widget=self.stack.currentWidget()
         if isinstance(widget,QWebEngineView):widget.reload()
 
-    def closeEvent(self,event):
-        if self.confirm_close and self.views and QMessageBox.question(self,'Fechar central','Fechar todas as contas? As notificações param ao sair.')!=QMessageBox.StandardButton.Yes:
-            event.ignore();return
-        # Páginas precisam ser destruídas antes dos perfis.
-        for view,profile in self.views.values():
-            view.page().deleteLater();view.deleteLater()
-        event.accept()
+    def cleanup(self):
+        if self._cleaned:
+            return
+        self._cleaned = True
+        self.tray.hide()
+        for notification in list(self.notifications):
+            self.finish_notification(notification)
+        for view, profile in self.views.values():
+            view.stop()
+            view.page().deleteLater()
+            view.deleteLater()
+        self.views.clear()
 
-if __name__=='__main__':
-    app=QApplication(sys.argv);app.setApplicationName('central-whatsapp');app.setDesktopFileName(os.environ.get('FLATPAK_ID','central-whatsapp'))
+    def quit_app(self):
+        self._quitting = True
+        self.close()
+        QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        if self._quitting or not self.confirm_close:
+            self.cleanup()
+            event.accept()
+            return
+        if self.settings['close_action'] == 'background':
+            event.ignore()
+            if self.can_background():
+                self.hide()
+            else:
+                QMessageBox.information(self, 'Central continua aberta',
+                    'Não há um meio confirmado de reabrir a central oculta. A janela continuará visível. Para encerrar, use Menu → Sair da central.')
+            return
+        self.cleanup()
+        event.accept()
+        QApplication.instance().quit()
+
+
+def instance_name(data_dir=DATA):
+    digest = hashlib.sha256(str(Path(data_dir).resolve()).encode()).hexdigest()[:24]
+    return f'central-whatsapp-{os.getuid()}-{digest}'
+
+
+def activate_existing(data_dir=DATA):
+    socket = QLocalSocket()
+    socket.connectToServer(instance_name(data_dir))
+    if not socket.waitForConnected(1500):
+        return False
+    socket.write(b'SHOW\n')
+    socket.flush()
+    if not socket.bytesAvailable():
+        socket.waitForReadyRead(1500)
+    acknowledged = bytes(socket.readAll()) == b'OK\n'
+    socket.disconnectFromServer()
+    return acknowledged
+
+
+class ActivationServer:
+    def __init__(self, window, data_dir=DATA):
+        self.window = window
+        self.name = instance_name(data_dir)
+        self.server = QLocalServer(window)
+        self.server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
+        # Chamador principal já detém o QLockFile; pode limpar socket obsoleto.
+        QLocalServer.removeServer(self.name)
+        self.ready = self.server.listen(self.name)
+        self.window.activation_ready = self.ready
+        self.server.newConnection.connect(self.accept)
+        self.clients = set()
+
+    def accept(self):
+        while self.server.hasPendingConnections():
+            socket = self.server.nextPendingConnection()
+            self.clients.add(socket)
+            socket.setReadBufferSize(64)
+            socket.readyRead.connect(lambda client=socket:self.read(client))
+            socket.disconnected.connect(lambda client=socket:self.drop(client))
+            timer = QTimer(socket)
+            timer.setSingleShot(True)
+            timer.timeout.connect(socket.disconnectFromServer)
+            timer.start(3000)
+            if socket.bytesAvailable():
+                self.read(socket)
+
+    def read(self, socket):
+        if not socket.canReadLine():return
+        if bytes(socket.readLine(64)) == b'SHOW\n':
+            self.window.show_window()
+            socket.write(b'OK\n')
+            socket.flush()
+        socket.disconnectFromServer()
+
+    def drop(self, socket):
+        self.clients.discard(socket)
+        socket.deleteLater()
+
+    def close(self):
+        self.window.activation_ready = False
+        for socket in list(self.clients):
+            socket.abort()
+        self.server.close()
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName('central-whatsapp')
+    app.setDesktopFileName(os.environ.get('FLATPAK_ID', 'central-whatsapp'))
+    app.setQuitOnLastWindowClosed(False)
     try:
         ProfileStore(DATA)
     except OSError as error:
-        QMessageBox.critical(None, 'Dados indisponíveis', f'Não foi possível abrir a pasta da central. {error}'); sys.exit(1)
-    lock=QLockFile(str(DATA/'app.lock'))
+        QMessageBox.critical(None, 'Dados indisponíveis', f'Não foi possível abrir a pasta da central. {error}')
+        return 1
+    lock = QLockFile(str(DATA/'app.lock'))
     if not lock.tryLock(100):
-        QMessageBox.information(None,'Central WhatsApp','A central já está aberta. Procure a janela no sistema.');sys.exit(0)
-    window=Window();window.show()
-    sys.exit(app.exec())
+        if '--autostart' in sys.argv:
+            return 0
+        if activate_existing():
+            return 0
+        QMessageBox.information(None, 'Central já aberta',
+            'A central está aberta, mas esta instância não respondeu ao pedido de mostrar a janela. Abra-a pela bandeja ou feche a versão anterior antes de iniciar a nova.')
+        return 1
+    window = Window()
+    server = ActivationServer(window)
+    app.aboutToQuit.connect(window.cleanup)
+    app.aboutToQuit.connect(server.close)
+    QTimer.singleShot(0, lambda:window.start(autostart='--autostart' in sys.argv))
+    result = app.exec()
+    lock.unlock()
+    return result
+
+
+if __name__ == '__main__':
+    sys.exit(main())

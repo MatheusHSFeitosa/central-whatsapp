@@ -1,5 +1,15 @@
 # Alterações
 
+## 0.3.0 — 30/10/2026
+
+- Interface inspirada no GNOME, lateral retrátil, ações no menu e seis ícones por perfil.
+- Preferências persistentes para início automático, início oculto, comportamento do X e carga de contas.
+- Contas carregadas permanecem ativas em segundo plano; notificações podem ser silenciadas por perfil.
+- Atalho reabre a mesma instância por comunicação local, inclusive sem bandeja.
+- Sair da central encerra o processo; ocultação é bloqueada sem um caminho de retorno confirmado.
+- Compatibilidade com perfis e sessões existentes; os novos campos têm valores padrão.
+- Início automático não é ativado na instalação; fica indisponível no Flatpak sem portal validado.
+
 ## 0.2.0 — 30/10/2026
 
 - Arquivar e restaurar perfis conserva o identificador e a sessão original.

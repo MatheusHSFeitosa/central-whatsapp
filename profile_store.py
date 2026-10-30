@@ -5,6 +5,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
+ICONS = {'user': 'Pessoal', 'briefcase': 'Trabalho', 'store': 'Loja',
+         'building': 'Empresa', 'headset': 'Atendimento', 'home': 'Casa'}
 
 def _canonical_id(value):
     if not isinstance(value, str):
@@ -28,6 +30,9 @@ def _validate(records):
         identifier = _canonical_id(record.get('id'))
         name = record.get('name')
         archived = record.get('archived', False)
+        icon = record.get('icon', 'user')
+        if not isinstance(icon, str) or icon not in ICONS:
+            raise ValueError('Ícone de perfil inválido')
         if not isinstance(name, str) or not name.strip() or len(name.strip()) > 60:
             raise ValueError('Nome de perfil deve ter entre 1 e 60 caracteres')
         if not isinstance(archived, bool):
@@ -40,7 +45,7 @@ def _validate(records):
         identifiers.add(identifier)
         if not archived:
             active_names.add(name.casefold())
-        result.append({'id': identifier, 'name': name, 'archived': archived})
+        result.append({'id': identifier, 'name': name, 'archived': archived, 'icon': icon})
     return result
 
 

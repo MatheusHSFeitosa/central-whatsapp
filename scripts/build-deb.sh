@@ -12,7 +12,7 @@ else
     python3 -m venv "$base/build/build-env"
     "$base/build/build-env/bin/python" -m pip install --target "$stage/opt/central-whatsapp/lib" -r "$base/requirements.txt"
 fi
-install -m644 "$base/central.py" "$base/profile_store.py" "$base/VERSION" "$base/whatsapp-web.svg" "$stage/opt/central-whatsapp/"
+install -m644 "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/VERSION" "$base/whatsapp-web.svg" "$stage/opt/central-whatsapp/"
 install -m644 "$base/packaging/central-whatsapp.desktop" "$stage/usr/share/applications/"
 install -m644 "$base/whatsapp-web.svg" "$stage/usr/share/icons/hicolor/scalable/apps/central-whatsapp.svg"
 cat > "$stage/usr/bin/central-whatsapp" <<'LAUNCH'

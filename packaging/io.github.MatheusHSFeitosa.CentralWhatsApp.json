@@ -22,6 +22,8 @@
       "build-commands": [
         "install -Dm644 central.py /app/share/central-whatsapp/central.py",
         "install -Dm644 profile_store.py /app/share/central-whatsapp/profile_store.py",
+        "install -Dm644 settings_store.py /app/share/central-whatsapp/settings_store.py",
+        "install -Dm644 desktop_ui.py /app/share/central-whatsapp/desktop_ui.py",
         "install -Dm644 VERSION /app/share/central-whatsapp/VERSION",
         "install -Dm644 whatsapp-web.svg /app/share/central-whatsapp/whatsapp-web.svg",
         "install -Dm644 whatsapp-web.svg /app/share/icons/hicolor/scalable/apps/io.github.MatheusHSFeitosa.CentralWhatsApp.svg",

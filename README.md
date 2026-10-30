@@ -2,11 +2,12 @@
 
 Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado ao WhatsApp ou à Meta.
 
-**Versão 0.2.0 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+**Versão 0.3.0 — experimental.** Validado no Pop!_OS 22.04 x86_64 até a tela de QR Code. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
 
 ## Recursos
 
-- Adicionar perfis, renomear, arquivar e restaurar a mesma sessão.
+- Visual inspirado no GNOME, lateral retrátil e seis ícones prontos por perfil.
+- Adicionar perfis, editar nome/ícone, arquivar e restaurar a mesma sessão.
 - Gravação atômica: erros ao salvar preservam o estado anterior e mostram um aviso.
 - Estados de carregamento e erro por conta; comandos disponíveis conforme a seleção.
 - Armazenamento independente por perfil e cookies persistentes.
@@ -14,14 +15,33 @@ Aplicativo comunitário para Linux: vários perfis do WhatsApp Web dentro da mes
 - Pedidos de permissão para notificações, câmera e microfone.
 - Downloads com seleção de destino.
 - Proteção contra duas instâncias usando simultaneamente o mesmo conjunto de perfis.
-- Ao fechar a central, todas as contas param; não há serviço residente ou início automático.
+- Preferências para continuar em segundo plano ao fechar a janela, iniciar na sessão Linux, escolher perfis carregados e silenciar notificações por conta.
+- Abrir o atalho novamente traz a instância existente de volta; Menu > Sair da central encerra as contas.
+
+## Segundo plano e inicialização
+
+Abra **Menu > Preferências** para escolher:
+
+- **Iniciar ao entrar no sistema**: cria uma entrada de autostart da sessão gráfica Linux, não um serviço de sistema. A instalação não ativa isso automaticamente.
+- **Iniciar com a janela oculta**: vale para o início automático; abrir pelo atalho sempre mostra a janela.
+- **Ao fechar a janela**: continuar em segundo plano ou sair.
+- **Carregar ao iniciar**: todos, somente os perfis marcados, ou nenhum. Contas não carregadas não emitem notificações.
+- **Avisos do sistema por perfil**: cada checkbox controla os avisos da sua conta no desktop. Sons de conversas e chamadas continuam controlados pelo próprio WhatsApp. O serviço do WhatsApp continua dependendo da conexão e das permissões concedidas.
+
+Padrões novos: início automático e oculto desativados, nenhum perfil pré-selecionado para carga e fechamento em segundo plano quando há meio de retorno. Não há suspensão dos perfis carregados ao ocultar: eles continuam consumindo recursos para receber mensagens.
+
+A bandeja pode não estar disponível no GNOME/Pop!_OS. Nesse caso, o mesmo atalho **Central WhatsApp** do menu reabre a janela por comunicação local entre instâncias. Se não houver bandeja nem esse caminho confirmado, o aplicativo mantém a janela visível e explica como sair. Use **Menu > Sair da central** para encerrar de verdade.
+
+As preferências ficam em `settings.json` dentro da pasta de dados, e o início automático local/DEB em `$XDG_CONFIG_HOME/autostart/central-whatsapp.desktop` (padrão `~/.config/autostart/`). A remoção local só apaga a entrada com o marcador de propriedade desta central. A remoção do DEB preserva dados do usuário; desative o início automático pelas Preferências antes de desinstalar.
+
+A inicialização automática no **Flatpak** fica indisponível até implementar e validar o portal apropriado. A receita Flatpak continua experimental.
 
 ## Instalar com APT a partir de um arquivo DEB
 
 Baixe o `.deb` da versão desejada em **Releases** deste repositório. Em Pop!_OS / Ubuntu **22.04 amd64**, na pasta do arquivo:
 
 ```sh
-sudo apt install ./central-whatsapp_0.2.0_amd64.deb
+sudo apt install ./central-whatsapp_0.3.0_amd64.deb
 ```
 
 Abra **Central WhatsApp** no menu. Clique em **Adicionar perfil**, informe um nome e conecte pelo celular. Cada perfil pode usar um número diferente.
@@ -62,7 +82,7 @@ Com `flatpak-builder` instalado e Flathub configurado:
 
 ```sh
 sh scripts/build-flatpak.sh
-flatpak install --user ./dist/central-whatsapp_0.2.0_x86_64.flatpak
+flatpak install --user ./dist/central-whatsapp_0.3.0_x86_64.flatpak
 ```
 
 São necessários KDE SDK 6.11 e PySide BaseApp 6.11; o construtor pode obtê-los do Flathub. O teste precisa confirmar especialmente sandbox do Qt WebEngine, notificações e diálogos de arquivos. Não há instrução para desativar o sandbox. Chamadas de vídeo e câmera no Flatpak ainda não foram habilitadas/validadas.
@@ -74,10 +94,11 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 .venv/bin/python tests/smoke.py
+.venv/bin/python tests/activation_smoke.py
 sh scripts/build-deb.sh
 ```
 
-O teste precisa de uma sessão gráfica e das bibliotecas Qt, mas não usa login nem contas reais. Testa criação, renomeação e arquivamento/restauração, reabertura da configuração, caminhos separados, falhas de gravação e preservação dos dados. Em ambiente sem tela, use `xvfb-run -a .venv/bin/python tests/smoke.py`.
+O teste precisa de uma sessão gráfica e das bibliotecas Qt, mas não usa login nem contas reais. Testa criação/edição e arquivamento/restauração, caminhos separados, falhas de gravação, preferências, ícones, lateral retrátil, notificações silenciadas e fechamento seguro. O teste IPC usa dois processos isolados para reabrir uma janela oculta e encerrar pelo comando de saída. Em ambiente sem tela, use `xvfb-run -a .venv/bin/python tests/smoke.py`.
 
 O fluxo GitHub Actions executa os testes de armazenamento e da interface sem login, gera o DEB em Ubuntu 22.04 e o disponibiliza como artefato. A geração de pacote no CI, isoladamente, não confirma a compatibilidade do WhatsApp. As bibliotecas Qt incluídas no DEB precisam ser atualizadas em novos lançamentos do aplicativo.
 
@@ -93,7 +114,7 @@ O fluxo GitHub Actions executa os testes de armazenamento e da interface sem log
 - As contas acessam diretamente os servidores do WhatsApp. A central não tem servidor próprio nem coleta própria de telemetria.
 - O identificador `QtWebEngine` é removido do User-Agent para compatibilidade; a versão real do Chromium é mantida.
 - RAM/CPU crescem com o número de contas carregadas e a atividade de cada conta. Não foram medidos comparativos.
-- Notificações exigem permissão do site, suporte do sistema e a aplicação aberta. Em GNOME utiliza libnotify ou D-Bus, com alternativa pela bandeja quando disponível.
+- Notificações exigem permissão do site, suporte do sistema e a conta carregada no processo da central, visível ou em segundo plano. Em GNOME utiliza libnotify ou D-Bus, com alternativa pela bandeja quando disponível.
 - A sessão persistente foi configurada e o isolamento dos caminhos foi testado. A persistência de uma conta autenticada só pode ser confirmada após login e reabertura pelo usuário.
 
 ## Licenças

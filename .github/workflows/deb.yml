@@ -19,7 +19,7 @@ jobs:
           build/test-env/bin/python -m pip install -r requirements.txt
       - name: Verificar sintaxe e armazenamento isolado
         run: |
-          build/test-env/bin/python -m py_compile central.py profile_store.py tests/smoke.py
+          build/test-env/bin/python -m py_compile central.py profile_store.py settings_store.py desktop_ui.py tests/smoke.py tests/activation_smoke.py
           build/test-env/bin/python -m unittest discover -s tests -p 'test_*.py' -v
           for script in scripts/*.sh; do sh -n "$script"; done
       - name: Verificar bibliotecas nativas do Qt
@@ -41,13 +41,15 @@ jobs:
       - name: Exercitar interface Qt sem login nem rede
         env:
           QT_DEBUG_PLUGINS: '1'
-        run: xvfb-run -a build/test-env/bin/python tests/smoke.py
+        run: |
+          xvfb-run -a build/test-env/bin/python tests/smoke.py
+          xvfb-run -a build/test-env/bin/python tests/activation_smoke.py
       - name: Montar e inspecionar DEB
         run: |
           export CENTRAL_PYTHON_LIB="$(build/test-env/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
           sh scripts/build-deb.sh
           dpkg-deb --info "dist/central-whatsapp_$(cat VERSION)_amd64.deb"
-          test -f build/deb/opt/central-whatsapp/profile_store.py
+          for module in central.py profile_store.py settings_store.py desktop_ui.py; do test -f "build/deb/opt/central-whatsapp/$module"; done
           cmp VERSION build/deb/opt/central-whatsapp/VERSION
       - uses: actions/upload-artifact@v4
         with:
