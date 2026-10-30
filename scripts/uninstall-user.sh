@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+base=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+sh "$base/scripts/check-app-closed.sh"
 # Dados e sessões são preservados em central-whatsapp-data.
 rm -f "$HOME/.local/bin/central-whatsapp" "$HOME/.local/share/applications/central-whatsapp.desktop" "$HOME/.local/share/icons/hicolor/scalable/apps/central-whatsapp.svg"
 rm -rf -- "$HOME/.local/share/central-whatsapp"
