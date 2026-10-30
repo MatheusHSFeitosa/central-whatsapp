@@ -8,9 +8,9 @@ from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushB
 
 ICON_PRESETS = {
     'user': ('Pessoa', 'avatar-default'),
-    'briefcase': ('Trabalho', 'user-business'),
-    'store': ('Loja', 'applications-internet'),
-    'building': ('Empresa', 'folder'),
+    'briefcase': ('Trabalho', 'briefcase'),
+    'store': ('Loja', 'shop'),
+    'building': ('Empresa', 'office-building'),
     'headset': ('Atendimento', 'audio-headphones'),
     'home': ('Casa', 'user-home'),
 }
@@ -21,6 +21,25 @@ def icon(preset):
     themed = QIcon.fromTheme(theme)
     if not themed.isNull():
         return themed
+    if preset in ('open-menu-symbolic', 'list-add', 'sidebar-show', 'sidebar-hide'):
+        image = QPixmap(32, 32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QApplication.palette().text().color(), 2))
+        if preset == 'open-menu-symbolic':
+            for y in (9, 16, 23): painter.drawLine(6, y, 26, y)
+        elif preset == 'list-add':
+            painter.drawLine(16, 6, 16, 26); painter.drawLine(6, 16, 26, 16)
+        else:
+            painter.drawRoundedRect(QRectF(4, 5, 24, 22), 2, 2)
+            painter.drawLine(11, 5, 11, 27)
+            if preset == 'sidebar-show':
+                painter.drawLine(17, 12, 22, 16); painter.drawLine(22, 16, 17, 20)
+            else:
+                painter.drawLine(22, 12, 17, 16); painter.drawLine(17, 16, 22, 20)
+        painter.end()
+        return QIcon(image)
     if preset not in ICON_PRESETS:
         standards = {
             'list-add': QStyle.StandardPixmap.SP_FileDialogNewFolder,
