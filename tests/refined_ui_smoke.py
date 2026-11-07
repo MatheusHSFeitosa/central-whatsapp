@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix='central-refined-ui-') as data:
             assert window.selected_account()['id'] == selected
             assert window.views == opened
             if position != 'left':
-                assert window.sidebar.height() == 52
+                assert window.sidebar.height() == (40 if position == 'top' else 48)
                 assert window.sidebar_toggle.isHidden()
                 assert all('\n' not in window.list.item(i).text()
                            for i in range(window.list.count()))
@@ -115,4 +115,4 @@ with tempfile.TemporaryDirectory(prefix='central-refined-ui-') as data:
     flush.exec()
     delete(app)
 
-print('PASS: grupos não acionáveis, contexto sem abrir contas, barra de 52px, overflow, teclado e sessões preservadas')
+print('PASS: grupos não acionáveis, contexto sem abrir contas, abas integradas à barra de título, overflow, teclado e sessões preservadas')

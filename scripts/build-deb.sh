@@ -7,12 +7,16 @@ stage="$base/build/deb"
 rm -rf -- "$stage"
 mkdir -p "$stage/DEBIAN" "$stage/opt/central-whatsapp/lib" "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/scalable/apps" "$base/dist"
 if [ -n "${CENTRAL_PYTHON_LIB:-}" ]; then
-    cp -a "$CENTRAL_PYTHON_LIB/PySide6" "$CENTRAL_PYTHON_LIB/shiboken6" "$stage/opt/central-whatsapp/lib/"
+    cp -a "$CENTRAL_PYTHON_LIB/PySide6" "$CENTRAL_PYTHON_LIB/shiboken6" "$CENTRAL_PYTHON_LIB/dbus_next" "$stage/opt/central-whatsapp/lib/"
 else
     python3 -m venv "$base/build/build-env"
     "$base/build/build-env/bin/python" -m pip install --target "$stage/opt/central-whatsapp/lib" -r "$base/requirements.txt"
 fi
-install -m644 "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$stage/opt/central-whatsapp/"
+mkdir -p "$stage/opt/central-whatsapp/ui-icons"
+install -m644 "$base/ui-icons/"* "$stage/opt/central-whatsapp/ui-icons/"
+mkdir -p "$stage/opt/central-whatsapp/service-icons"
+install -m644 "$base/service-icons/"* "$stage/opt/central-whatsapp/service-icons/"
+install -m644 "$base/ui_widgets.py" "$base/desktop_notifications.py" "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/grouping.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$stage/opt/central-whatsapp/"
 install -m644 "$base/packaging/central-whatsapp.desktop" "$stage/usr/share/applications/"
 install -m644 "$base/whatsapp-web.svg" "$stage/usr/share/icons/hicolor/scalable/apps/central-whatsapp.svg"
 cat > "$stage/usr/bin/central-whatsapp" <<'LAUNCH'

@@ -1,5 +1,38 @@
 # Alterações
 
+## 0.10.0 — 07/11/2026
+
+- Cabeçalhos próprios em preferências, edição de perfil, confirmação, seleção de arquivo e escolha de cor.
+- Menus, submenus e formulários seguem a mesma paleta clara/escura e a mesma família de ícones.
+- Controles de janela simbólicos, restauração do estado maximizado e cantos retos em tela cheia.
+- Abas superiores integradas à barra de título, nome ao lado do avatar e notificação separada.
+- Fluxos de aceitar/cancelar e verificações de transparência e alinhamento exercitados com dados isolados.
+
+## 0.8.0 — validação local
+
+- Links externos acionados pelo usuário abrem no navegador padrão, inclusive links que pedem nova aba.
+- Vídeos baixados podem ser abertos no player do sistema.
+- Grupos usam um marcador no título em vez de moldura nas abas.
+- Avisos do sistema incluem a identidade da Central e do perfil, restauram a janela e encaminham o clique ao serviço de origem.
+
+## 0.7.0 — validação local (não publicada)
+
+- Menu Grupos lista grupos existentes e permite criar novos, inclusive vazios.
+- Grupo e foto podem ser escolhidos ao criar ou editar um perfil; novos perfis usam a logo do serviço por padrão.
+- Botão direito no grupo permite renomear, escolher a cor da borda e adicionar abas.
+- Borda colorida contorna somente as abas do grupo; cabeçalhos sem seta mantêm recolhimento por clique e contador.
+- Migração reconhece grupos antigos e preserva sessões e fotos existentes.
+
+## 0.6.0 — validação local (não publicada)
+
+- Logo na lateral; o controle muda ao passar o cursor e o nome aparece somente com a lateral expandida.
+- Preferências organizadas em Aparência, Inicialização e Segundo plano.
+- Grupos recolhidos/expandidos por clique no título, com contador de perfis e preferência persistente.
+- Recolher grupos preserva contas carregadas e recebimento de notificações.
+- Telegram com indicação de carregamento, recuperação limitada de falhas iniciais e escolha entre Web A e Web K, mantendo o perfil local.
+- Tela cheia habilitada para os players web, com restauração da janela ao sair.
+- Mídia sintética verificada: WAV, MP3, Opus e WebM reproduziram; MP4/H.264 não é suportado pelo runtime atual.
+
 ## 0.5.0 — 30/10/2026
 
 - Visual aprovado com família simbólica uniforme, controles alinhados e grupos fora da seleção.

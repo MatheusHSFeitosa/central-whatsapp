@@ -36,7 +36,7 @@ def _validate(records):
         if not isinstance(service, str) or service not in SERVICES:
             raise ValueError('Serviço de perfil inválido')
         avatar_mode = record.get('avatar_mode', 'auto')
-        if not isinstance(avatar_mode, str) or avatar_mode not in ('auto', 'file', 'icon'):
+        if not isinstance(avatar_mode, str) or avatar_mode not in ('auto', 'file', 'icon', 'service'):
             raise ValueError('Modo de foto de perfil inválido')
         if not isinstance(icon, str) or icon not in ICONS:
             raise ValueError('Ícone de perfil inválido')
@@ -52,8 +52,12 @@ def _validate(records):
         identifiers.add(identifier)
         if not archived:
             active_names.add(name.casefold())
+        client = record.get('telegram_client','a')
+        if service == 'telegram' and client not in ('a','k'):
+            raise ValueError('Cliente do Telegram inválido')
         result.append({'id': identifier, 'name': name, 'archived': archived,
                        'icon': icon, 'avatar_mode': avatar_mode, 'service': service})
+        if service == 'telegram':result[-1]['telegram_client'] = client
     return result
 
 

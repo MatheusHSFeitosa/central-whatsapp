@@ -2,7 +2,7 @@
 
 Aplicativo comunitário para Linux: vários perfis de WhatsApp Web, Telegram e Chatwoot G3 dentro da mesma janela, com uma lista lateral para alternar entre contas. Feito em Python + PySide6 / Qt WebEngine (Chromium), sem Electron. Não é afiliado aos serviços integrados.
 
-**Versão 0.5.0 — experimental.** Validado no Pop!_OS 22.04 x86_64 até as telas de entrada dos três serviços. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
+**Versão 0.10.0.** Validado no Pop!_OS 22.04 x86_64 até as telas de entrada dos três serviços. Login com conta real, mensagens, chamadas e notificações reais ainda precisam de teste pelo usuário. Não há promessa de menor consumo que um navegador comum.
 
 ## Serviços
 
@@ -12,7 +12,7 @@ O serviço de um perfil existente fica fixo: para outro serviço, adicione outro
 
 ## Contas e notificações na barra
 
-Clique com o botão direito em um perfil para editar nome/ícone, escolher foto, recarregar, arquivar ou silenciar avisos do sistema. Isso abre as opções sem trocar a conversa visível. A engrenagem contém somente adicionar/restaurar perfis, preferências gerais e sair.
+Clique com o botão direito em um perfil para editar nome/ícone, escolher foto, recarregar, arquivar ou silenciar avisos do sistema. Isso abre as opções sem trocar a conversa visível. A engrenagem reúne adicionar/restaurar perfis, o menu Grupos, preferências gerais e sair.
 
 Nas barras superior e inferior os títulos ficam em uma linha e o botão de expansão é oculto. A preferência de recolhimento é preservada para quando a barra voltar à esquerda.
 
@@ -20,7 +20,7 @@ Uma bolinha laranja indica que a central recebeu uma notificação para aquele p
 
 ## Identidade visual e navegação
 
-O visual usa ícones simbólicos próprios e uniformes, controles de 44 × 44 pixels na lateral e cabeçalhos de grupo separados da seleção. A barra horizontal ocupa 52 pixels, mantém nomes em uma linha e limita a largura das abas. Quando houver mais contas do que espaço, use as setas, a rolagem ou o teclado. Os nomes completos continuam nas dicas e nos rótulos acessíveis.
+O visual usa ícones simbólicos próprios e uniformes, cabeçalhos de grupo separados da seleção e a mesma paleta nos menus e formulários. As abas superiores ficam integradas à barra de título, com nome ao lado do avatar e indicador de notificação separado. A barra inferior ocupa 48 pixels. As abas mantêm nomes em uma linha e largura limitada. Preferências, confirmações e seletores de arquivo/cor usam cabeçalhos da Central. Quando houver mais contas do que espaço, use as setas, a rolagem ou o teclado. Os nomes completos continuam nas dicas e nos rótulos acessíveis.
 
 Os perfis mantêm as mesmas sessões ao alternar layout. O menu do botão direito também pode ser aberto com a tecla Menu ou Shift+F10. Ajustar uma conta inativa por esse menu não a carrega em segundo plano.
 
@@ -28,9 +28,9 @@ A logo aprovada, **Encontro**, representa dois balões azuis. O nome interno do 
 
 ## Aparência e organização
 
-Em **Configurações > Preferências**, escolha tema claro, escuro ou automático conforme o GNOME; posição da barra à esquerda, acima ou abaixo; e agrupamento sem grupos, por serviço ou personalizado. Para grupos personalizados, use **botão direito no perfil > Grupo personalizado** e informe o mesmo nome nas contas que devem ficar juntas. Perfis sem nome de grupo ficam em “Sem grupo”. A mudança de posição preserva as contas abertas. O tema das páginas de conversa é escolhido dentro de cada serviço.
+Em **Configurações > Preferências**, escolha tema claro, escuro ou automático conforme o GNOME; posição da barra à esquerda, acima ou abaixo; e agrupamento sem grupos, por serviço ou personalizado. O menu **Configurações > Grupos** lista os grupos existentes e oferece **Novo grupo**. Na criação ou edição de perfil, escolha o grupo e a foto; novos perfis começam com a logo do serviço. Use **botão direito no perfil > Grupos** para mudar sua associação. No cabeçalho do grupo, o botão direito oferece renomear, escolher a cor do marcador e adicionar abas. A cor aparece em um pequeno marcador ao lado do título do grupo. Clique no título para recolher ou expandir; grupos vazios são preservados. Perfis sem nome de grupo ficam em “Sem grupo”. A mudança de posição preserva as contas abertas. O tema das páginas de conversa é escolhido dentro de cada serviço.
 
-A versão 0.5.0 está disponível em [Releases](https://github.com/MatheusHSFeitosa/central-whatsapp/releases/tag/v0.5.0), com pacote DEB para Pop!_OS / Ubuntu 22.04 amd64.
+A versão 0.10.0 está disponível em [Releases](https://github.com/MatheusHSFeitosa/central-whatsapp/releases/tag/v0.10.0), com pacote DEB para Pop!_OS / Ubuntu 22.04 amd64.
 
 ## Recursos
 
@@ -167,3 +167,17 @@ O código deste projeto está sob MIT. PySide6, Qt, Chromium e demais componente
 ### Runtime validado
 
 Esta versão fixa PySide6 6.11.3. A combinação local PySide6 6.12.0 + Python 3.10.12 apresentou erro de contagem de referências mesmo em chamadas mínimas de widgets, causando falha ao encerrar após várias mudanças de aparência. Os mesmos casos e o teste completo de layout encerraram normalmente com 6.11.3. Instalação por usuário e pacote DEB usam a versão fixada em `requirements.txt`.
+
+## Novidades locais 0.6.0
+
+A logo na lateral troca para o controle de expansão quando o cursor passa sobre ela. O nome Central Chats aparece completo apenas com a lateral expandida. O nome do aplicativo foi mantido até existir uma escolha diferente aprovada.
+
+As preferências estão em três abas. Clique no título de um grupo para recolher ou expandir; o contador mostra o total de perfis, sem desconectá-los. Grupos recolhidos mantêm a sinalização de notificações.
+
+Se o Telegram não abrir, a central tenta recuperar falhas iniciais de rede/arquivos até duas vezes. A tela de carregamento permite tentar novamente ou trocar o cliente; a opção também fica no botão direito do perfil > Cliente do Telegram. Web A e Web K usam a mesma origem e o mesmo armazenamento do perfil, sem apagá-lo, mas podem solicitar conexão à conta separadamente. Não existe promessa de corrigir indisponibilidade externa ou de rede.
+
+### Áudio e vídeo
+
+Foram usados arquivos sintéticos, sem contas reais: WAV, MP3, Ogg/Opus e WebM/VP8+Opus avançaram a reprodução; o vídeo mostrou frames. O teste foi silenciado para não emitir som na máquina, portanto não comprova a saída física dos alto-falantes. Entrada e saída de tela cheia passaram.
+
+MP4 com H.264/AAC retornou formato não suportado. Essa limitação permanece: o suporte depende dos codecs da compilação do [Qt WebEngine](https://doc.qt.io/qt-6/qtwebengine-features.html#audio-and-video-codecs), não apenas de instalar um programa FFmpeg no sistema. Os testes não acessaram mensagens, áudios ou vídeos privados.

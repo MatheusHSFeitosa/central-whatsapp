@@ -34,7 +34,7 @@ class SettingsTests(unittest.TestCase):
         for settings in ([], {'startup_enabled': 1}, {'start_hidden': 'yes'},
                          {'close_action': 'hide'}, {'startup_mode': 'invalid'},
                          {'startup_profiles': ['bad']}, {'muted_profiles': [identifier, identifier]},
-                         {'sidebar_collapsed': None}, {'theme':'blue'}, {'bar_position':'right'},
+                         {'sidebar_collapsed': None}, {'collapsed_groups':'bad'}, {'collapsed_groups':['unknown:X']}, {'collapsed_groups':['service:Telegram','service:Telegram']}, {'theme':'blue'}, {'bar_position':'right'},
                          {'group_mode':'invalid'}, {'profile_groups':{'bad':'Work'}},
                          {'profile_groups':{identifier:'a'*41}}, {'unknown': True}):
             with self.subTest(settings=settings):

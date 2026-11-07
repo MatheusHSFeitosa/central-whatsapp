@@ -10,3 +10,11 @@ def allows_url(service, url):
     return (service in SERVICES and url.scheme() == 'https'
             and url.host() == SERVICES[service]['host'] and url.port(443) == 443
             and not url.userInfo())
+
+
+def service_url(account):
+    service = account.get('service','whatsapp')
+    if service == 'telegram':
+        client = account.get('telegram_client','a')
+        return 'https://web.telegram.org/' + ('k' if client == 'k' else 'a') + '/'
+    return SERVICES[service]['url']

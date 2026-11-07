@@ -31,9 +31,9 @@ with tempfile.TemporaryDirectory() as data:
                 assert window.views == views
                 assert window.preferences_store.load()['bar_position'] == position
                 if position == 'left': assert window.sidebar.width() == 240
-                else: assert window.sidebar.height() == 52
+                else: assert window.sidebar.height() == (40 if position == 'top' else 48)
                 if position == 'bottom': assert window.sidebar.y() > window.stack.y()
-                if position == 'top': assert window.sidebar.y() < window.stack.y()
+                if position == 'top': assert window.title_bar.isAncestorOf(window.sidebar)
                 assert [window.profile_group(a) for a in window.accounts] == sorted(window.profile_group(a) for a in window.accounts)
                 if os.environ.get('CENTRAL_LAYOUT_OUTPUT') and theme in ('light','dark'):
                     target = Path(os.environ['CENTRAL_LAYOUT_OUTPUT']); target.mkdir(parents=True,exist_ok=True)

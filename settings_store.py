@@ -8,6 +8,8 @@ import copy
 import json
 import os
 import tempfile
+import re
+from grouping import group_name
 from pathlib import Path
 
 from profile_store import _canonical_id
@@ -16,7 +18,7 @@ DEFAULTS = {
     'startup_enabled': False, 'start_hidden': False, 'close_action': 'background',
     'startup_mode': 'selected', 'startup_profiles': [], 'muted_profiles': [],
     'sidebar_collapsed': False, 'theme': 'system', 'bar_position': 'left',
-    'group_mode': 'none', 'profile_groups': {},
+    'group_mode': 'none', 'profile_groups': {}, 'collapsed_groups': [], 'groups': {},
 }
 MARKER = 'X-CentralWhatsApp-Managed=true'
 
@@ -38,6 +40,19 @@ def _validated(settings):
     for key, allowed in [('theme', ('system','light','dark')), ('bar_position', ('left','top','bottom')), ('group_mode', ('none','service','custom'))]:
         if result[key] not in allowed:
             raise ValueError('Preferência inválida: ' + key)
+    collapsed = result['collapsed_groups']
+    if not isinstance(collapsed, list) or any(not isinstance(key, str) or not key.startswith(('service:', 'custom:')) or len(key)>100 or any(c in key for c in '\n\r\x00') for key in collapsed):
+        raise ValueError('Grupos recolhidos inválidos')
+    if len(collapsed) != len(set(collapsed)):
+        raise ValueError('Grupos recolhidos duplicados')
+    registry = result['groups']
+    if not isinstance(registry,dict):raise ValueError('Cadastro de grupos inválido')
+    seen=set()
+    for name,options in registry.items():
+        if group_name(name)!=name or name.casefold() in seen:raise ValueError('Nome de grupo duplicado ou inválido')
+        seen.add(name.casefold())
+        if not isinstance(options,dict) or set(options)!={'color'} or not isinstance(options['color'],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',options['color']):
+            raise ValueError('Cor de grupo inválida')
     groups = result['profile_groups']
     if not isinstance(groups, dict):
         raise ValueError('Grupos inválidos')

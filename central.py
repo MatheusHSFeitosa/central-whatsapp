@@ -1,53 +1,134 @@
 #!/usr/bin/env python3
-from services import SERVICES, allows_url
+from services import SERVICES, allows_url, service_url
 import json
 import re
-import shutil
-import subprocess
+from itertools import count
 import os
 import sys
 import uuid
 import hashlib
 from copy import deepcopy
+from grouping import known_groups, canonical_name, custom_settings, renamed_group, group_name, DEFAULT_GROUP_COLOR
 from pathlib import Path
 from avatar_manager import AvatarManager, OWN_AVATAR_SCRIPT
 from profile_store import ProfileStore
 from settings_store import PreferencesStore, AutostartManager
-from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon, notification_icon
-from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect, QEvent
+from desktop_notifications import DesktopNotifications
+from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon, notification_icon, service_icon, COLLAPSED_ROLE, GROUP_ROLE, GROUP_KEY_ROLE, EMPTY_GROUP_ROLE
+from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect, QEvent, Signal, QTemporaryDir, QSignalBlocker, QMimeDatabase, QTranslator, QLibraryInfo
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtGui import QDesktopServices, QIcon
+from PySide6.QtGui import QDesktopServices, QIcon, QColor, QPainter
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
- QListWidget, QPushButton, QLabel, QStackedWidget, QInputDialog, QMessageBox, QFileDialog, QSystemTrayIcon, QMenu, QDialog)
-from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEnginePermission
+ QListWidget, QPushButton, QLabel, QStackedWidget, QSystemTrayIcon, QDialogButtonBox, QCheckBox)
+from ui_widgets import (
+    Dialog as QDialog, Menu as QMenu, InputDialog as QInputDialog,
+    MessageBox as QMessageBox, FileDialog as QFileDialog, ColorDialog as QColorDialog,
+)
+from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEnginePermission, QWebEngineSettings, QWebEngineLoadingInfo
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 DATA = Path(os.environ.get('CENTRAL_WHATSAPP_DATA', str(Path(os.environ.get('XDG_DATA_HOME',str(Path.home()/'.local/share')))/'central-whatsapp-data')))
 CONFIG = DATA/'profiles.json'
 
 class Page(QWebEnginePage):
+    initialResourceFailed = Signal()
+
     def __init__(self, profile, parent=None, service="whatsapp"):
         super().__init__(profile, parent)
         self.service = service
+        self.newWindowRequested.connect(self.open_requested_window)
+
+    def javaScriptConsoleMessage(self, level, message, line, source):
+        if self.service == 'telegram' and 'Failed to fetch dynamically imported module' in message:
+            self.initialResourceFailed.emit()
+        super().javaScriptConsoleMessage(level,message,line,source)
 
     def acceptNavigationRequest(self, url, kind, main):
         if allows_url(self.service, url):
             return True
-        if kind == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
-            if url.scheme() in ('https', 'http', 'mailto'):
-                QDesktopServices.openUrl(url)
+        if main and kind == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
+            self.open_external(url)
         return False
+
+    @staticmethod
+    def open_external(url):
+        if not url.isValid() or url.userInfo():
+            return
+        if (url.scheme() in ('https', 'http') and url.host()) or url.scheme() == 'mailto':
+            QDesktopServices.openUrl(url)
+
+    def open_requested_window(self, request):
+        if not request.isUserInitiated():
+            return
+        url = request.requestedUrl()
+        if allows_url(self.service, url):
+            self.setUrl(url)
+        else:
+            self.open_external(url)
+
+
+class ServiceView(QWebEngineView):
+    """A local recovery panel, without injecting privileged code into web content."""
+    def __init__(self):
+        super().__init__()
+        self.loading_panel = QWidget(self)
+        self.loading_panel.setObjectName('serviceLoadingPanel')
+        layout = QVBoxLayout(self.loading_panel)
+        layout.addStretch()
+        self.loading_title = QLabel();self.loading_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.loading_title.setWordWrap(True);layout.addWidget(self.loading_title)
+        self.retry_button = QPushButton('Tentar novamente')
+        self.alternative_button = QPushButton('Usar outro cliente do Telegram')
+        for button in (self.retry_button,self.alternative_button):
+            button.setMaximumWidth(300);layout.addWidget(button,0,Qt.AlignmentFlag.AlignHCenter)
+        layout.addStretch();self.loading_panel.hide()
+
+    def contextMenuEvent(self, event):
+        request = self.lastContextMenuRequest()
+        menu = self.createStandardContextMenu()
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        if request and request.mediaType() == request.MediaType.MediaTypeVideo:
+            download = self.pageAction(QWebEnginePage.WebAction.DownloadMediaToDisk)
+            if download in menu.actions():
+                download.setText('Salvar vídeo para abrir no player…')
+        menu.exec(event.globalPos())
+        menu.deleteLater()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.loading_panel.setGeometry(self.rect())
+
+    def show_loading(self, message):
+        self.loading_title.setText(message)
+        self.loading_panel.setGeometry(self.rect());self.loading_panel.show();self.loading_panel.raise_()
+
 
 class Window(DesktopUIMixin, QMainWindow):
     def __init__(self):
         super().__init__()
         self._system_palette = QApplication.palette()
         self.setWindowTitle('Central Chats')
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(1250, 820)
         self.setWindowIcon(QIcon(str(Path(__file__).with_name('whatsapp-web.svg'))))
         self.views, self.profiles, self.load_states = {}, {}, {}
-        self.notifications = []
+        self.notifications = {}
+        self.notification_ids = count(1)
+        self.notification_images = QTemporaryDir()
+        self.tray_notification = None
+        self.desktop_notifications = DesktopNotifications(self)
+        self.desktop_notifications.delivered.connect(self.notification_delivered)
+        self.desktop_notifications.clicked.connect(self.open_notification)
+        self.desktop_notifications.dismissed.connect(self.dismiss_notification)
         self.pending_notifications = set()
+        self._startup_ready = set()
+        self._retry_counts = {}
+        self._retry_pending = {}
+        self._load_generations = {}
+        self._content_checks = {}
+        self._fullscreen_state = None
+        self._fullscreen_key = None
         self.avatar_manager = AvatarManager(DATA)
         self.avatar_pending = set()
         self.confirm_close = True
@@ -83,6 +164,7 @@ class Window(DesktopUIMixin, QMainWindow):
         menu.addAction('Sair da central', self.quit_app)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self.tray_activated)
+        self.tray.messageClicked.connect(self.open_tray_notification)
         # O Qt também registra o ícone se uma bandeja surgir depois.
         self.tray.show()
 
@@ -90,8 +172,33 @@ class Window(DesktopUIMixin, QMainWindow):
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
             self.show_window()
 
+    def update_window_corners(self):
+        square = self.isMaximized() or self.isFullScreen()
+        root = self.centralWidget()
+        if root and root.property('squareCorners') != square:
+            root.setProperty('squareCorners', square)
+            for widget in (root, self.title_bar):
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+                widget.update()
+        if hasattr(self, 'resize_grip'):
+            self.resize_grip.setVisible(not square)
+        if hasattr(self, 'title_bar'):
+            self.title_bar.refresh_icons()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.update_window_corners()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self.update_window_corners()
+
     def show_window(self):
-        self.showNormal()
+        if self.isMinimized():
+            self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+        self.show()
         self.raise_()
         self.activateWindow()
 
@@ -130,7 +237,7 @@ class Window(DesktopUIMixin, QMainWindow):
             return False
         self.settings = candidate
         selected = self.selected_account()
-        key = selected['id'] if selected else None
+        key = selected['id'] if selected else next((key for key,(view,_) in self.views.items() if view is self.stack.currentWidget()),None)
         self.sort_accounts()
         row = next((i for i,a in enumerate(self.accounts) if a['id']==key), -1)
         self.refresh(row)
@@ -155,8 +262,9 @@ class Window(DesktopUIMixin, QMainWindow):
                 if mode == 'all' or (mode == 'selected' and account['id'] in selected)]
         for row in rows:
             self.list.setCurrentRow(row)
+            self.select(row,force=True)
         if rows:
-            self.list.setCurrentRow(rows[0])
+            self.list.setCurrentRow(rows[0]);self.select(rows[0],force=True)
 
     def start(self, autostart=False):
         self.load_startup_profiles()
@@ -177,8 +285,8 @@ class Window(DesktopUIMixin, QMainWindow):
         return True
 
     def update_actions(self):
-        selected = 0 <= self.list.currentRow() < len(self.accounts)
-        for action in (self.photo_file_action, self.photo_auto_action, self.photo_icon_action):
+        selected = 0 <= self.list.currentRow() < len(self.accounts) and not self.list.currentItem().data(COLLAPSED_ROLE)
+        for action in (self.photo_file_action, self.photo_auto_action, self.photo_icon_action, self.photo_service_action):
             action.setEnabled(selected)
         self.photo_auto_action.setEnabled(selected and self.accounts[self.list.currentRow()].get('service', 'whatsapp') == 'whatsapp')
         self.rename_button.setEnabled(selected)
@@ -186,6 +294,9 @@ class Window(DesktopUIMixin, QMainWindow):
         self.reload_button.setEnabled(selected and self.accounts[self.list.currentRow()]['id'] in self.views)
         self.restore_button.setEnabled(bool(self.archived))
         account = self.accounts[self.list.currentRow()] if selected else None
+        telegram = bool(account and account.get('service','whatsapp')=='telegram')
+        self.telegram_menu.menuAction().setVisible(telegram)
+        for client,action in self.telegram_actions.items():action.setChecked(bool(account and account.get('telegram_client','a')==client))
         self.profile_header.setText(account['name']+' · '+SERVICES[account.get('service','whatsapp')]['name'] if account else 'Perfil')
         self.group_action.setEnabled(selected)
         self.mute_action.setEnabled(selected)
@@ -193,10 +304,13 @@ class Window(DesktopUIMixin, QMainWindow):
         self.seen_action.setEnabled(selected and self.accounts[self.list.currentRow()]['id'] in self.pending_notifications)
 
     def show_profile_menu(self, position):
+        header=self.list.group_at(position)
+        if header:
+            self.show_group_menu(header.data(GROUP_KEY_ROLE),position);return
         item = self.list.profile_at(position)
         if item is None:return
         previous = self.selected_account()
-        previous_key = previous['id'] if previous else None
+        previous_key = previous['id'] if previous else next((key for key,(view,_) in self.views.items() if view is self.stack.currentWidget()),None)
         self.list.blockSignals(True)
         self.list.setCurrentItem(item)
         self.list.blockSignals(False)
@@ -212,18 +326,125 @@ class Window(DesktopUIMixin, QMainWindow):
             else:self.stack.setCurrentIndex(0)
             self.update_actions()
 
-    def set_profile_group(self):
-        account = self.selected_account()
-        if account is None:return
-        key = account['id']
-        groups = dict(self.settings.get('profile_groups', {}))
-        value, ok = QInputDialog.getText(self, 'Grupo personalizado',
-            'Nome do grupo (até 40 caracteres; vazio remove):', text=groups.get(key, ''))
+    def group_catalog(self):
+        return known_groups(self.settings,self.accounts+self.archived)
+
+    def assigned_group(self, account):
+        if self.settings.get('group_mode')=='service':return SERVICES[account.get('service','whatsapp')]['name']
+        value=self.settings.get('profile_groups',{}).get(account['id'],'').strip()
+        return canonical_name(self.settings,value,self.accounts+self.archived) if value else ''
+
+    def create_group(self, assign=False):
+        value,ok=QInputDialog.getText(self,'Novo grupo','Nome do grupo (até 40 caracteres):')
         if not ok:return
-        value = value.strip()
-        if value:groups[key] = value
-        else:groups.pop(key, None)
-        self.apply_preferences({'profile_groups':groups})
+        try:
+            value=group_name(value)
+            if any(name.casefold()==value.casefold() for name in self.group_catalog()):raise ValueError('Este grupo já existe.')
+        except ValueError as error:
+            QMessageBox.information(self,'Grupo não criado',str(error));return
+        candidate=custom_settings(self.settings,self.accounts+self.archived)
+        candidate['groups'][value]={'color':DEFAULT_GROUP_COLOR}
+        account=self.selected_account() if assign else None
+        if account:candidate['profile_groups'][account['id']]=value
+        self.apply_preferences(candidate)
+
+    def set_profile_group(self):
+        self.create_group(assign=True)
+
+    def assign_profile_group(self, name):
+        account=self.selected_account()
+        if account is None:return
+        candidate=custom_settings(self.settings,self.accounts+self.archived)
+        if name:
+            name=canonical_name(self.settings,name,self.accounts+self.archived)
+            candidate['groups'].setdefault(name,{'color':DEFAULT_GROUP_COLOR})
+            candidate['profile_groups'][account['id']]=name
+        else:candidate['profile_groups'].pop(account['id'],None)
+        self.apply_preferences(candidate)
+
+    def populate_profile_groups(self):
+        menu=self.profile_groups_menu;menu.clear()
+        account=self.selected_account()
+        current=self.assigned_group(account) if account else ''
+        action=menu.addAction('Sem grupo',lambda:self.assign_profile_group(''))
+        action.setCheckable(True);action.setChecked(not current)
+        for name in self.group_catalog():
+            action=menu.addAction(name,lambda checked=False,value=name:self.assign_profile_group(value))
+            action.setCheckable(True);action.setChecked(name.casefold()==current.casefold())
+        menu.addSeparator();menu.addAction('Novo grupo…',self.set_profile_group)
+
+    def populate_groups_menu(self):
+        menu=self.groups_menu;menu.clear()
+        names=self.group_catalog()
+        for name in names:menu.addAction(name,lambda checked=False,value=name:self.reveal_group(value))
+        if not names:
+            action=menu.addAction('Nenhum grupo criado');action.setEnabled(False)
+        menu.addSeparator();menu.addAction('Novo grupo…',lambda:self.create_group(False))
+
+    def reveal_group(self, name):
+        present={self.profile_group(a) for a in self.accounts}
+        if self.settings.get('group_mode')=='none' or (name not in present and self.settings.get('group_mode')!='custom'):
+            candidate=custom_settings(self.settings,self.accounts+self.archived)
+            self.apply_preferences(candidate)
+        for row in range(self.list.count()):
+            item=self.list.item(row)
+            if item.data(GROUP_ROLE)==name:
+                key=item.data(GROUP_KEY_ROLE)
+                if key in self.settings.get('collapsed_groups',[]):self.toggle_group(key)
+                self.list.scrollToItem(item);return
+
+    def show_group_menu(self, key, position):
+        name=key.partition(':')[2]
+        menu=QMenu(self)
+        heading=menu.addAction(name);heading.setEnabled(False)
+        menu.addSeparator()
+        menu.addAction(icon('document-edit'),'Renomear grupo…',lambda:self.rename_group(name))
+        menu.addAction(icon('palette'),'Cor do grupo…',lambda:self.choose_group_color(name))
+        tabs=menu.addMenu(icon('list-add'),'Adicionar abas')
+        tabs.addAction(icon('list-add'),'Novo perfil…',lambda:self.add(name))
+        tabs.addAction(icon('group'),'Perfis existentes…',lambda:self.add_profiles_to_group(name))
+        menu.exec(self.list.viewport().mapToGlobal(position))
+        menu.deleteLater()
+
+    def rename_group(self, name):
+        value,ok=QInputDialog.getText(self,'Renomear grupo','Novo nome:',text=name)
+        if not ok:return
+        try:candidate=renamed_group(self.settings,self.accounts+self.archived,name,value)
+        except ValueError as error:
+            QMessageBox.information(self,'Grupo não alterado',str(error));return
+        self.apply_preferences(candidate)
+
+    def choose_group_color(self, name):
+        catalog=self.group_catalog()
+        old=catalog.get(name,{}).get('color',DEFAULT_GROUP_COLOR)
+        color=QColorDialog.getColor(QColor(old),self,'Cor do grupo')
+        if not color.isValid():return
+        candidate=deepcopy(self.settings)
+        candidate['groups']=catalog
+        candidate['groups'][name]={'color':color.name()}
+        self.apply_preferences(candidate)
+
+    def add_profiles_to_group(self, name):
+        candidates=[account for account in self.accounts if self.profile_group(account)!=name]
+        dialog=QDialog(self);dialog.setWindowTitle('Adicionar abas ao grupo '+name);dialog.resize(420,360)
+        layout=QVBoxLayout(dialog);scroll=QWidget();options=QVBoxLayout(scroll);checks={}
+        for account in candidates:
+            check=QCheckBox();check.setAccessibleName(account['name']);check.setText(check.fontMetrics().elidedText(account['name'],Qt.TextElideMode.ElideRight,340));check.setToolTip(account['name']+' · '+SERVICES[account.get('service','whatsapp')]['name'])
+            options.addWidget(check);checks[account['id']]=check
+        if not candidates:options.addWidget(QLabel('Todos os perfis já estão neste grupo.'))
+        from PySide6.QtWidgets import QScrollArea
+        area=QScrollArea();area.setWidgetResizable(True);area.setWidget(scroll);layout.addWidget(area)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Adicionar')
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Cancelar')
+        buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        selected=[key for key,check in checks.items() if check.isChecked()]
+        if not selected:return
+        candidate=custom_settings(self.settings,self.accounts+self.archived)
+        candidate['groups'].setdefault(name,{'color':DEFAULT_GROUP_COLOR})
+        for key in selected:candidate['profile_groups'][key]=name
+        self.apply_preferences(candidate)
 
     def toggle_profile_notifications(self, muted):
         account = self.selected_account()
@@ -248,15 +469,30 @@ class Window(DesktopUIMixin, QMainWindow):
     def changeEvent(self, event):
         super().changeEvent(event)
         if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow() and hasattr(self, 'list'):
-            account = self.selected_account()
-            if account and self.viewing_profile(account['id']):self.clear_selected_notification()
+            key=next((key for key,(view,_) in self.views.items() if view is self.stack.currentWidget()),None)
+            if key in self.pending_notifications and self.viewing_profile(key):
+                self.pending_notifications.discard(key)
+                self.apply_sidebar(self.settings['sidebar_collapsed']);self.update_actions()
+
+    def toggle_group(self, key):
+        collapsed = set(self.settings.get('collapsed_groups',[]))
+        if key in collapsed:collapsed.remove(key)
+        else:collapsed.add(key)
+        candidate = deepcopy(self.settings)
+        candidate['collapsed_groups'] = sorted(collapsed)
+        try:self.preferences_store.save(candidate)
+        except (ValueError,OSError) as error:
+            QMessageBox.critical(self,'Grupo não alterado',str(error));return
+        self.settings = candidate
+        self.apply_sidebar(self.settings['sidebar_collapsed'])
+        self.update_actions()
 
     def profile_group(self, account):
         mode = self.settings.get('group_mode', 'none')
         if mode == 'service':
             return SERVICES[account.get('service','whatsapp')]['name']
         if mode == 'custom':
-            return self.settings.get('profile_groups', {}).get(account['id'], '').strip() or 'Sem grupo'
+            return self.assigned_group(account) or 'Sem grupo'
         return ''
 
     def sort_accounts(self):
@@ -269,6 +505,14 @@ class Window(DesktopUIMixin, QMainWindow):
         row = next((i for i,a in enumerate(self.accounts) if a['id']==key), -1)
         self.list.blockSignals(True); self.list.clear()
         self.list.addItems([a['name'] for a in self.accounts])
+        if self.settings.get('group_mode')=='custom':
+            present={self.profile_group(a) for a in self.accounts}
+            for name in self.group_catalog():
+                if name not in present:
+                    from PySide6.QtWidgets import QListWidgetItem
+                    item=QListWidgetItem(name);item.setData(EMPTY_GROUP_ROLE,True)
+                    item.setData(GROUP_ROLE,name);item.setData(GROUP_KEY_ROLE,'custom:'+name)
+                    self.list.addItem(item)
         for i, account in enumerate(self.accounts):
             self.list.item(i).setToolTip(account['name']+' · '+SERVICES[account.get('service','whatsapp')]['name'])
             self.list.item(i).setIcon(self.account_icon(account))
@@ -294,46 +538,91 @@ class Window(DesktopUIMixin, QMainWindow):
             return None
         return name
 
-    def ask_profile(self, title, current=None):
-        current = current or {'name':'', 'icon':'user'}
-        result = edit_profile_dialog(self, title, current['name'], current.get('icon', 'user'), current.get('service', 'whatsapp'), bool(current.get('id')))
-        if result is None:
-            return None
-        name, preset = result[:2]
-        service = result[2] if len(result) > 2 else current.get("service", "whatsapp")
-        name = name.strip()
-        if not name or len(name) > 60:
-            QMessageBox.information(self, 'Nome inválido', 'Informe um nome entre 1 e 60 caracteres.')
-            return None
-        if any(a['id'] != current.get('id') and a['name'].casefold() == name.casefold() for a in self.accounts):
-            QMessageBox.information(self, 'Nome já usado', 'Escolha outro nome para o perfil.')
-            return None
-        return name, preset, service
+    def ask_profile(self, title, current=None, default_group=None):
+        editing=current is not None
+        current=current or {'name':'','icon':'user','service':'whatsapp','avatar_mode':'service'}
+        options=list(self.group_catalog())
+        automatic=not editing and default_group is None and self.settings.get('group_mode')=='service'
+        if automatic:
+            options=sorted(set(options)|{service['name'] for service in SERVICES.values()},key=str.casefold)
+        initial_group=default_group if default_group is not None else (self.assigned_group(current) if editing else (SERVICES[current.get('service','whatsapp')]['name'] if automatic else ''))
+        photo=self.avatar_manager.path(current['id']) if current.get('id') else None
+        result=edit_profile_dialog(self,title,current['name'],current.get('icon','user'),current.get('service','whatsapp'),editing,
+            group_options=options,group=initial_group,group_forced=default_group is not None,
+            avatar_mode=current.get('avatar_mode','auto'),photo_path=str(photo) if photo and photo.exists() else '',automatic_grouping=automatic)
+        if result is None:return None
+        name,preset=result[:2];service=result[2] if len(result)>2 else current.get('service','whatsapp')
+        extra=result[3] if len(result)>3 else {}
+        name=name.strip()
+        if not name or len(name)>60:
+            QMessageBox.information(self,'Nome inválido','Informe um nome entre 1 e 60 caracteres.');return None
+        if any(a['id']!=current.get('id') and a['name'].casefold()==name.casefold() for a in self.accounts):
+            QMessageBox.information(self,'Nome já usado','Escolha outro nome para o perfil.');return None
+        draft=dict(name=name,icon=preset,service=service,avatar_mode=extra.get('avatar_mode',current.get('avatar_mode','service')),
+            photo_path=extra.get('photo_path',''),group=extra.get('group',default_group or ''),
+            new_group=extra.get('new_group',False),group_touched=extra.get('group_touched',default_group is not None))
+        return draft
 
-    def add(self):
-        result = self.ask_profile('Adicionar perfil')
-        if result is None:return
-        name, preset, service = result
-        accounts = self.accounts + [{'id':str(uuid.uuid4()), 'name':name, 'icon':preset, 'service':service, 'avatar_mode':'auto' if service=='whatsapp' else 'icon'}]
-        if not self.save(accounts=accounts):return
-        self.accounts = accounts
-        self.refresh(len(accounts)-1)
+    def commit_profile(self, draft, row=None):
+        old_records=[dict(a,archived=False) for a in self.accounts]+[dict(a,archived=True) for a in self.archived]
+        key=self.accounts[row]['id'] if row is not None else str(uuid.uuid4())
+        account=dict(self.accounts[row]) if row is not None else {'id':key}
+        account.update({field:draft[field] for field in ('name','icon','service','avatar_mode')})
+        accounts=[dict(a) for a in self.accounts]
+        if row is None:accounts.append(account)
+        else:accounts[row]=account
+        candidate=deepcopy(self.settings)
+        target=self.avatar_manager.path(key);previous_photo=None
+        photo_written=False;profile_written=False
+        try:
+            if target.exists():previous_photo=target.read_bytes()
+            if draft.get('group_touched'):
+                candidate=custom_settings(self.settings,self.accounts+self.archived)
+                value=draft.get('group','')
+                if value:
+                    value=group_name(value)
+                    if draft.get('new_group') and any(existing.casefold()==value.casefold() for existing in self.group_catalog()):raise ValueError('Este grupo já existe.')
+                    value=canonical_name(candidate,value,self.accounts+self.archived)
+                    candidate['groups'].setdefault(value,{'color':DEFAULT_GROUP_COLOR})
+                    candidate['profile_groups'][key]=value
+                else:candidate['profile_groups'].pop(key,None)
+            photo_path=draft.get('photo_path','')
+            if account['avatar_mode']=='file' and photo_path and Path(photo_path).resolve()!=target.resolve():
+                self.avatar_manager.import_file(key,photo_path);photo_written=True
+            if account['avatar_mode']=='file' and not target.exists():raise ValueError('Escolha uma foto para o perfil.')
+            self.store.save([dict(a,archived=False) for a in accounts]+[dict(a,archived=True) for a in self.archived]);profile_written=True
+            if candidate!=self.settings:self.preferences_store.save(candidate)
+        except (ValueError,OSError) as error:
+            rollback=[]
+            if profile_written:
+                try:self.store.save(old_records)
+                except (ValueError,OSError) as failure:rollback.append(str(failure))
+            if photo_written and not rollback:
+                try:
+                    if previous_photo is None:self.avatar_manager.remove(key)
+                    else:target.write_bytes(previous_photo);target.chmod(0o600)
+                except OSError as failure:rollback.append(str(failure))
+            message='Não foi possível salvar o perfil. '+str(error)
+            if rollback:message+=' A reversão também encontrou um erro: '+'; '.join(rollback)
+            QMessageBox.critical(self,'Perfil não salvo',message);return False
+        self.accounts=accounts;self.settings=candidate
+        self.refresh(len(accounts)-1 if row is None else row)
+        return True
+
+    def add(self, default_group=None):
+        if not isinstance(default_group,str):default_group=None
+        draft=self.ask_profile('Adicionar perfil',default_group=default_group)
+        if draft is not None:self.commit_profile(draft)
 
     def rename(self):
-        row = self.list.currentRow()
-        if row < 0:return
-        result = self.ask_profile('Editar perfil', self.accounts[row])
-        if result is None:return
-        name, preset, service = result
-        accounts = [dict(a) for a in self.accounts]
-        accounts[row].update(name=name, icon=preset)
-        if not self.save(accounts=accounts):return
-        self.accounts = accounts
-        self.refresh(row)
+        row=self.list.currentRow()
+        if not 0<=row<len(self.accounts):return
+        draft=self.ask_profile('Editar perfil',self.accounts[row])
+        if draft is not None:self.commit_profile(draft,row)
 
     def remove(self):
         row = self.list.currentRow()
-        if row < 0:return
+        if not 0<=row<len(self.accounts):return
         account = self.accounts[row]
         answer = QMessageBox.question(self, 'Arquivar perfil', f'Arquivar {account["name"]}?\nA conta deixará de funcionar nesta central até ser restaurada. A sessão local será preservada.\nPara encerrar o acesso definitivamente, saia da conta pelo próprio serviço.')
         if answer != QMessageBox.StandardButton.Yes:return
@@ -341,6 +630,9 @@ class Window(DesktopUIMixin, QMainWindow):
         archived = self.archived + [dict(account, archived=True)]
         if not self.save(accounts, archived):return
         self.accounts, self.archived = accounts, archived
+        for token, entry in list(self.notifications.items()):
+            if entry[0] == account['id']:
+                self.dismiss_notification(token)
         item = self.views.pop(account['id'], None)
         if item:
             view, profile = item
@@ -349,6 +641,7 @@ class Window(DesktopUIMixin, QMainWindow):
             view.page().deleteLater(); view.deleteLater()
             # Reutilizar o mesmo perfil ao restaurar evita abrir dois armazenamentos iguais.
         self.load_states.pop(account['id'], None)
+        self._startup_ready.discard(account['id']);self._retry_counts.pop(account['id'],None);self._retry_pending.pop(account['id'],None);self._load_generations[account['id']]=self._load_generations.get(account['id'],0)+1
         self.pending_notifications.discard(account['id'])
         self.refresh()
 
@@ -370,7 +663,7 @@ class Window(DesktopUIMixin, QMainWindow):
         self.refresh(len(accounts)-1)
 
     def update_status(self, key):
-        if self.list.currentRow() < 0:return
+        if not 0<=self.list.currentRow()<len(self.accounts):return
         account = self.accounts[self.list.currentRow()]
         if account['id'] != key:return
         suffix = {'loading':' — Carregando…', 'error':' — Falha ao carregar. Verifique a conexão e recarregue.'}.get(self.load_states.get(key), '')
@@ -383,10 +676,13 @@ class Window(DesktopUIMixin, QMainWindow):
     def loading(self, key):
         if key not in self.views:return
         self.load_states[key] = 'loading'
+        account = next((a for a in self.accounts if a['id']==key),None)
+        if account and account.get('service')=='telegram' and key not in self._startup_ready:
+            self.views[key][0].show_loading('Carregando Telegram…')
         self.update_status(key)
 
-    def select(self,row):
-        if row<0:
+    def select(self,row,force=False):
+        if row<0 or row>=len(self.accounts) or (self.list.item(row).data(COLLAPSED_ROLE) and not force):
             self.update_actions(); return
         account=self.accounts[row]; key=account['id']
         if key not in self.views:
@@ -412,13 +708,21 @@ class Window(DesktopUIMixin, QMainWindow):
             profile.setHttpCacheMaximumSize(100*1024*1024)
             profile.setHttpAcceptLanguage('pt-BR,pt;q=0.9,en;q=0.7')
             profile.setNotificationPresenter(lambda n,k=key:self.notify(k,n))
-            view=QWebEngineView(); page=Page(profile,view,account.get('service','whatsapp'));view.setPage(page)
+            view=ServiceView(); page=Page(profile,view,account.get('service','whatsapp'));view.setPage(page)
+            page.settings().setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled,True)
+            page.fullScreenRequested.connect(lambda request,k=key:self.media_fullscreen(k,request))
+            page.initialResourceFailed.connect(lambda k=key:self.check_initial_content(k))
+            page.loadingChanged.connect(lambda info,k=key:self.load_information(k,info))
+            view.retry_button.clicked.connect(lambda checked=False,k=key:self.retry_service(k))
+            view.alternative_button.clicked.connect(lambda checked=False,k=key:self.other_telegram_client(k))
             page.permissionRequested.connect(lambda permission,k=key:self.permission(k,permission))
             view.loadStarted.connect(lambda k=key:self.loading(k))
             view.loadFinished.connect(lambda ok,k=key:self.loaded(k,ok))
             self.views[key]=(view,profile);self.stack.addWidget(view)
             self.load_states[key] = 'loading'
-            view.load(QUrl(SERVICES[account.get('service','whatsapp')]['url']))
+            view.load(QUrl(service_url(account)))
+        if self._fullscreen_key and self._fullscreen_key!=key and self._fullscreen_key in self.views:
+            self.views[self._fullscreen_key][0].page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen)
         self.stack.setCurrentWidget(self.views[key][0])
         if self.viewing_profile(key):self.clear_selected_notification()
         self.update_status(key)
@@ -428,13 +732,112 @@ class Window(DesktopUIMixin, QMainWindow):
         if key not in self.views:return
         self.load_states[key] = 'ready' if ok else 'error'
         self.update_status(key)
+        account = next((a for a in self.accounts if a['id']==key),None)
+        if account and account.get('service')=='telegram':
+            if ok:QTimer.singleShot(2000,lambda k=key:self.check_initial_content(k))
+            elif key not in self._retry_pending:self.views[key][0].show_loading('O Telegram não carregou. Tente novamente ou use o outro cliente web.')
         if ok:
             QTimer.singleShot(1500, lambda k=key:self.refresh_avatar(k))
 
+    def load_information(self, key, info):
+        account=next((a for a in self.accounts if a['id']==key),None)
+        if account and account.get('service')=='telegram' and info.url().path()!=QUrl(service_url(account)).path():return
+        if info.status()==QWebEngineLoadingInfo.LoadStatus.LoadFailedStatus and info.errorCode() in (-21,-101,-105,-106,-118):
+            self.recover_initial_load(key)
+
+    def check_initial_content(self, key):
+        account = next((a for a in self.accounts if a['id']==key),None)
+        if not account or account.get('service')!='telegram' or key not in self.views or key in self._startup_ready:return
+        page = self.views[key][0].page()
+        if not allows_url('telegram',page.url()):return
+        generation=self._load_generations.get(key,0)
+        count=self._content_checks.get(key,0)
+        self._content_checks[key]=count+1
+        def checked(ready):
+            if key not in self.views or self._load_generations.get(key,0)!=generation:return
+            if ready:
+                self._startup_ready.add(key);self.views[key][0].loading_panel.hide()
+                self.load_states[key]='ready';self.update_status(key)
+            else:
+                self.recover_initial_load(key)
+                if count<10:QTimer.singleShot(3000,lambda:self.check_initial_content(key) if self._load_generations.get(key,0)==generation else None)
+        # Only a boolean leaves the page; no conversation text is collected.
+        page.runJavaScript('Boolean(location.protocol === \"https:\" && location.hostname === \"web.telegram.org\" && document.body && document.body.innerText.trim().length > 20)',checked)
+
+    def recover_initial_load(self, key):
+        account = next((a for a in self.accounts if a['id']==key),None)
+        if not account or account.get('service')!='telegram' or key not in self.views or key in self._startup_ready or key in self._retry_pending:return
+        count = self._retry_counts.get(key,0)
+        if count>=2:
+            self.load_states[key]='error';self.update_status(key)
+            self.views[key][0].show_loading('O Telegram não carregou. Tente novamente ou use o outro cliente web.')
+            return
+        generation=self._load_generations.get(key,0)
+        self._retry_counts[key]=count+1;self._retry_pending[key]=generation
+        self.views[key][0].show_loading('Reconectando Telegram…')
+        def retry():
+            if self._load_generations.get(key,0)!=generation:return
+            self._retry_pending.pop(key,None)
+            current = next((a for a in self.accounts if a['id']==key),None)
+            if current and key in self.views and key not in self._startup_ready:
+                self.views[key][0].load(QUrl(service_url(current)))
+        QTimer.singleShot(1200*(count+1),retry)
+
+    def retry_service(self, key):
+        account = next((a for a in self.accounts if a['id']==key),None)
+        if account and key in self.views:
+            self._retry_counts[key]=0;self._startup_ready.discard(key)
+            self._retry_pending.pop(key,None);self._content_checks[key]=0
+            self._load_generations[key]=self._load_generations.get(key,0)+1
+            self.views[key][0].load(QUrl(service_url(account)))
+
+    def other_telegram_client(self, key):
+        account = next((a for a in self.accounts if a['id']==key),None)
+        if account:self.set_telegram_client('k' if account.get('telegram_client','a')=='a' else 'a',key)
+
+    def set_telegram_client(self, client, key=None):
+        account = self.selected_account() if key is None else next((a for a in self.accounts if a['id']==key),None)
+        if not account or account.get('service')!='telegram' or client not in ('a','k'):return
+        key=account['id']
+        accounts=[dict(a,telegram_client=client) if a['id']==key else dict(a) for a in self.accounts]
+        if not self.save(accounts=accounts):return
+        self.accounts=accounts;self._retry_counts[key]=0;self._startup_ready.discard(key)
+        self._retry_pending.pop(key,None);self._content_checks[key]=0
+        self._load_generations[key]=self._load_generations.get(key,0)+1
+        if key in self.views:self.views[key][0].load(QUrl(service_url(next(a for a in accounts if a['id']==key))))
+        self.update_actions()
+
+    def keyPressEvent(self, event):
+        if event.key()==Qt.Key.Key_Escape and self._fullscreen_state is not None:
+            widget=self.views.get(self._fullscreen_key,(self.stack.currentWidget(),None))[0]
+            if isinstance(widget,QWebEngineView):widget.page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen)
+            event.accept();return
+        super().keyPressEvent(event)
+
+    def media_fullscreen(self, key, request):
+        if request.toggleOn():
+            if key not in self.views or self.stack.currentWidget() is not self.views[key][0]:request.reject();return
+            self._fullscreen_state=self.windowState();self._fullscreen_key=key
+            request.accept()
+            self.showFullScreen()
+            self.title_bar.hide();self.resize_grip.hide();self.sidebar.hide()
+        else:
+            if self._fullscreen_key!=key:request.reject();return
+            request.accept()
+            state=self._fullscreen_state if self._fullscreen_state is not None else Qt.WindowState.WindowNoState
+            self.setWindowState(state);self._fullscreen_state=None;self._fullscreen_key=None
+            self.title_bar.show();self.sidebar.show();self.update_window_corners()
+
+    def profile_icon(self, account):
+        mode=account.get('avatar_mode','auto')
+        fallback=service_icon(account.get('service','whatsapp'))
+        if mode=='icon':base=icon(account.get('icon','user'))
+        elif mode=='service':base=fallback
+        else:base=self.avatar_manager.icon(account['id'],fallback)
+        return base
+
     def account_icon(self, account):
-        fallback = icon(account.get('icon', 'user'))
-        base = fallback if account.get('avatar_mode', 'auto') == 'icon' else self.avatar_manager.icon(account['id'], fallback)
-        return notification_icon(base, account['id'] in self.pending_notifications)
+        return self.profile_icon(account)
 
     def update_avatar_icon(self, key):
         for row, account in enumerate(self.accounts):
@@ -442,7 +845,7 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def selected_account(self):
         row=self.list.currentRow()
-        return self.accounts[row] if 0 <= row < len(self.accounts) else None
+        return self.accounts[row] if 0 <= row < len(self.accounts) and not self.list.item(row).data(COLLAPSED_ROLE) else None
 
     def set_avatar_mode(self, key, mode):
         accounts=[dict(a, avatar_mode=mode) if a['id']==key else dict(a) for a in self.accounts]
@@ -467,6 +870,10 @@ class Window(DesktopUIMixin, QMainWindow):
                 else:target.write_bytes(previous);target.chmod(0o600)
         except (ValueError,OSError) as error:
             QMessageBox.warning(self,'Foto não alterada',str(error))
+
+    def use_service_icon(self):
+        account=self.selected_account()
+        if account:self.set_avatar_mode(account['id'],'service')
 
     def use_profile_icon(self):
         account=self.selected_account()
@@ -547,23 +954,72 @@ class Window(DesktopUIMixin, QMainWindow):
             self.update_actions()
         if key in self.settings['muted_profiles']:
             notification.close(); return
-        name=next((a['name'] for a in self.accounts if a['id']==key),'WhatsApp')
-        self.notifications.append(notification); notification.show()
-        try:
-            if shutil.which('notify-send'):
-                subprocess.Popen(['notify-send','--app-name=Central Chats','--icon=central-whatsapp','--',name+' · '+notification.title(),notification.message()],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            elif shutil.which('gdbus'):
-                subprocess.Popen(['gdbus','call','--session','--dest','org.freedesktop.Notifications','--object-path','/org/freedesktop/Notifications','--method','org.freedesktop.Notifications.Notify',json.dumps('Central Chats'),'0',json.dumps('central-whatsapp'),json.dumps(name+' · '+notification.title(),ensure_ascii=False),json.dumps(notification.message(),ensure_ascii=False),'[]','{}','-1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            else:
-                self.tray.showMessage(name+' · '+notification.title(),notification.message())
-        except OSError:
-            self.tray.showMessage(name+' · '+notification.title(),notification.message())
-        QTimer.singleShot(15000,lambda:self.finish_notification(notification))
+        account = next((a for a in self.accounts if a['id'] == key), None)
+        if account is None:
+            notification.close()
+            return
+        token = next(self.notification_ids)
+        summary = account['name'] + ' · ' + notification.title()
+        body = notification.message()
+        avatar = self.profile_icon(account).pixmap(64, 64)
+        composed = avatar.copy()
+        painter = QPainter(composed)
+        painter.drawPixmap(composed.width() - 26, composed.height() - 26, self.windowIcon().pixmap(26, 26))
+        painter.end()
+        image = str(Path(self.notification_images.path()) / f'{token}.png') if self.notification_images.isValid() else ''
+        if image and not composed.save(image):
+            image = ''
+        self.notifications[token] = (key, notification, image, summary, body)
+        notification.closed.connect(lambda: self.dismiss_notification(token, close_web=False))
+        notification.show()
+        desktop_entry = os.environ.get('FLATPAK_ID', 'central-whatsapp')
+        self.desktop_notifications.send(token, desktop_entry, summary, body, image, desktop_entry)
 
-    def finish_notification(self,n):
-        try: n.close()
-        except RuntimeError: pass
-        if n in self.notifications:self.notifications.remove(n)
+    def notification_delivered(self, token, delivered):
+        entry = self.notifications.get(token)
+        if entry is None:
+            self.desktop_notifications.close_notification(token)
+        elif not delivered:
+            self.dismiss_notification(self.tray_notification)
+            self.tray_notification = token
+            self.tray.showMessage(entry[3], entry[4], QIcon(entry[2]) if entry[2] else self.windowIcon())
+            QTimer.singleShot(30000, lambda: self.dismiss_notification(token))
+
+    def open_tray_notification(self):
+        self.open_notification(self.tray_notification)
+
+    def open_notification(self, token):
+        entry = self.notifications.get(token)
+        if entry is None:
+            return
+        key, notification, _, _, _ = entry
+        row = next((i for i, account in enumerate(self.accounts) if account['id'] == key), -1)
+        if row >= 0 and key in self.views:
+            group_key = self.list.item(row).data(GROUP_KEY_ROLE)
+            if group_key in self.settings['collapsed_groups']:
+                self.toggle_group(group_key)
+            self.show_window()
+            with QSignalBlocker(self.list):
+                self.list.setCurrentRow(row)
+            self.select(row, force=True)
+            self.list.scrollToItem(self.list.item(row))
+            # The originating site's click handler knows the conversation.
+            notification.click()
+
+    def dismiss_notification(self, token, close_web=True):
+        entry = self.notifications.pop(token, None)
+        if entry is None:
+            return
+        if token == self.tray_notification:
+            self.tray_notification = None
+        self.desktop_notifications.close_notification(token)
+        if entry[2]:
+            Path(entry[2]).unlink(missing_ok=True)
+        if close_web:
+            try:
+                entry[1].close()
+            except RuntimeError:
+                pass
 
     def download(self,item):
         path,_=QFileDialog.getSaveFileName(self,'Salvar arquivo',str(Path.home()/'Downloads'/Path(item.downloadFileName()).name))
@@ -573,11 +1029,20 @@ class Window(DesktopUIMixin, QMainWindow):
 
     def download_state(self, item, state):
         if state == item.DownloadState.DownloadInterrupted:
-            QMessageBox.warning(self, 'Download interrompido', 'Não foi possível concluir o download. Tente novamente pelo WhatsApp.')
+            QMessageBox.warning(self, 'Download interrompido', 'Não foi possível concluir o download. Tente novamente no serviço de origem.')
+        elif state == item.DownloadState.DownloadCompleted:
+            path = Path(item.downloadDirectory()) / item.downloadFileName()
+            if QMimeDatabase().mimeTypeForFile(str(path), QMimeDatabase.MatchMode.MatchContent).name().startswith('video/'):
+                answer = QMessageBox.question(self, 'Vídeo salvo', 'Abrir o vídeo no player do sistema?')
+                if answer == QMessageBox.StandardButton.Yes and not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
+                    QMessageBox.warning(self, 'Player indisponível', 'Abra o arquivo salvo em um player de vídeo do sistema.')
+
 
     def reload(self):
         account = self.selected_account()
-        if account and account['id'] in self.views:self.views[account['id']][0].reload()
+        if account and account['id'] in self.views:
+            if account.get('service')=='telegram':self.retry_service(account['id'])
+            else:self.views[account['id']][0].reload()
 
     def cleanup(self):
         if self._cleaned:
@@ -585,8 +1050,8 @@ class Window(DesktopUIMixin, QMainWindow):
         self._cleaned = True
         self.avatar_timer.stop()
         self.tray.hide()
-        for notification in list(self.notifications):
-            self.finish_notification(notification)
+        for token in list(self.notifications):
+            self.dismiss_notification(token)
         for view, profile in self.views.values():
             view.stop()
             view.page().deleteLater()
@@ -683,6 +1148,10 @@ class ActivationServer:
 
 def main():
     app = QApplication(sys.argv)
+    app.setStyle('Fusion')
+    translator = QTranslator(app)
+    if translator.load('qtbase_pt_BR', QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
+        app.installTranslator(translator)
     app.setApplicationName('central-whatsapp')
     app.setDesktopFileName(os.environ.get('FLATPAK_ID', 'central-whatsapp'))
     app.setQuitOnLastWindowClosed(False)

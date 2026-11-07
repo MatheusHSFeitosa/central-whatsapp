@@ -37,6 +37,13 @@ class ProfileStoreTests(unittest.TestCase):
             self.store.save([dict(self.record, service='arbitrary')])
         self.assertEqual(self.store.config.read_bytes(), previous)
 
+    def test_telegram_client_roundtrip(self):
+        for client in ('a','k'):
+            self.store.save([dict(self.record,service='telegram',telegram_client=client)])
+            self.assertEqual(self.store.load()[0]['telegram_client'],client)
+        with self.assertRaises(ValueError):
+            self.store.save([dict(self.record,service='telegram',telegram_client='external')])
+
     def test_invalid_file_preserved(self):
         for content in ('{', '{}', '[{"id": "../escape", "name":"Conta"}]'):
             with self.subTest(content=content):

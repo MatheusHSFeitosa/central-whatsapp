@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix='central-whatsapp-smoke-') as data:
         assert window.settings == previous_settings
         assert window.autostart_manager.capture() is None
         notification = Mock()
-        with patch('central.subprocess.Popen') as launch:
+        with patch.object(window.desktop_notifications, 'send') as launch:
             window.notify(first, notification)
             notification.close.assert_called_once()
             notification.show.assert_not_called()

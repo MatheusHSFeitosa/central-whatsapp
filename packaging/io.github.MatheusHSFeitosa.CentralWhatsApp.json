@@ -20,6 +20,14 @@
       "name": "central-whatsapp",
       "buildsystem": "simple",
       "build-commands": [
+        "mkdir -p /app/share/central-whatsapp/ui-icons",
+        "install -m644 ui-icons/* /app/share/central-whatsapp/ui-icons/",
+        "install -Dm644 ui_widgets.py /app/share/central-whatsapp/ui_widgets.py",
+        "pip3 install --no-index --no-deps --prefix=/app dbus_next-0.2.3-py3-none-any.whl",
+        "install -Dm644 desktop_notifications.py /app/share/central-whatsapp/desktop_notifications.py",
+        "install -Dm644 grouping.py /app/share/central-whatsapp/grouping.py",
+        "mkdir -p /app/share/central-whatsapp/service-icons",
+        "install -m644 service-icons/* /app/share/central-whatsapp/service-icons/",
         "install -Dm644 central.py /app/share/central-whatsapp/central.py",
         "install -Dm644 profile_store.py /app/share/central-whatsapp/profile_store.py",
         "install -Dm644 settings_store.py /app/share/central-whatsapp/settings_store.py",
@@ -45,6 +53,11 @@
             ".venv",
             "__pycache__"
           ]
+        },
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/d2/fc/c0a3f4c4eaa5a22fbef91713474666e13d0ea2a69c84532579490a9f2cc8/dbus_next-0.2.3-py3-none-any.whl",
+          "sha256": "58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b"
         }
       ]
     }
