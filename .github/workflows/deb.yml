@@ -5,7 +5,7 @@ on:
     tags: ['v*']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -62,7 +62,10 @@ jobs:
           for module in central.py ui_widgets.py desktop_notifications.py grouping.py profile_store.py settings_store.py desktop_ui.py avatar_manager.py services.py; do test -f "build/deb/opt/central-whatsapp/$module"; done
           test -f build/deb/opt/central-whatsapp/check-symbolic.svg
           cmp VERSION build/deb/opt/central-whatsapp/VERSION
-      - uses: actions/upload-artifact@v4
-        with:
-          name: central-whatsapp-deb
-          path: dist/*.deb
+      - name: Anexar pacote à versão
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum "dist/central-whatsapp_$(cat VERSION)_amd64.deb" | sed 's|dist/||' > dist/SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" "dist/central-whatsapp_$(cat VERSION)_amd64.deb" dist/SHA256SUMS --clobber
