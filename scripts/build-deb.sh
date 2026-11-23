@@ -52,6 +52,8 @@ rm -rf "$stage/opt/central-whatsapp/lib/PySide6/Qt/translations/qtwebengine_loca
 mkdir -p "$stage/usr/share/central-whatsapp/apparmor"
 install -m644 "$base/packaging/apparmor/central-chats-cef" "$stage/usr/share/central-whatsapp/apparmor/"
 install -m755 "$base/packaging/postinst" "$base/packaging/postrm" "$stage/DEBIAN/"
+mkdir -p "$stage/usr/share/doc/central-whatsapp/licenses"
+install -m644 "$base/packaging/licenses/"* "$stage/usr/share/doc/central-whatsapp/licenses/"
 mkdir -p "$stage/usr/share/doc/central-whatsapp"
 install -m644 "$base/LICENSE" "$base/README.md" "$base/CREDITS.md" "$stage/usr/share/doc/central-whatsapp/"
 size=$(du -sk "$stage/opt" | cut -f1)

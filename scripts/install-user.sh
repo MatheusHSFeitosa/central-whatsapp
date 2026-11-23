@@ -13,13 +13,15 @@ if command -v apt-get >/dev/null && command -v dpkg-deb >/dev/null; then
     (cd "$dest/support/downloads" && apt-get download libxcb-cursor0 libnotify-bin)
     for package in "$dest/support/downloads/"*.deb; do dpkg-deb -x "$package" "$dest/support"; done
 fi
+mkdir -p "$dest/licenses"
+install -m644 "$base/packaging/licenses/"* "$dest/licenses/"
 mkdir -p "$dest/ui-icons"
 install -m644 "$base/ui-icons/"* "$dest/ui-icons/"
 mkdir -p "$dest/service-icons"
 install -m644 "$base/service-icons/"* "$dest/service-icons/"
 mkdir -p "$dest/cef-runtime"
 cp -a "$base/build/cef-runtime/." "$dest/cef-runtime"/
-install -m644 "$base/split_workspace.py" "$base/window_chrome.py" "$base/cef_engine.py" "$base/cef_storage.py" "$base/ui_widgets.py" "$base/desktop_notifications.py" "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/grouping.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$dest/"
+install -m644 "$base/split_workspace.py" "$base/window_chrome.py" "$base/cef_engine.py" "$base/cef_storage.py" "$base/ui_widgets.py" "$base/desktop_notifications.py" "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/grouping.py" "$base/VERSION" "$base/CREDITS.md" "$base/README.md" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$dest/"
 cat > "$HOME/.local/bin/central-whatsapp" <<'LAUNCH'
 #!/bin/sh
 export LD_LIBRARY_PATH="$HOME/.local/share/central-whatsapp/support/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

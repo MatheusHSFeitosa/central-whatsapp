@@ -42,3 +42,12 @@ chat de demonstração. São **mockups com dados fictícios**, não capturas de 
 ou mensagens reais, e não prometem reproduzir a aparência atual de cada serviço.
 Para reproduzi-las, execute `tests/cef_split_smoke.py` com
 `CENTRAL_DEMO_OUTPUT=$PWD/docs/images`.
+
+Os textos de licença Qt/PySide6, dbus-next e nlohmann/json acompanham o pacote
+em `licenses/` (instalação no usuário) ou
+`/usr/share/doc/central-whatsapp/licenses/` (DEB). As bibliotecas mantêm suas
+licenças originais e são distribuídas separadamente do código MIT da Central.
+Código-fonte e histórico dos componentes: [Qt 6.11.3](https://github.com/qt/qtbase/tree/v6.11.3),
+[Qt for Python](https://code.qt.io/cgit/pyside/pyside-setup.git/),
+[dbus-next 0.2.3](https://github.com/altdesktop/python-dbus-next/tree/v0.2.3) e
+[JSON 3.12.0](https://github.com/nlohmann/json/tree/v3.12.0).
