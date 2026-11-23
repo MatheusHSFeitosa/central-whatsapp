@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as data:
     with patch.object(QWebEngineView, 'load'):
         window = Window(); window.confirm_close = False
         for name, service in [('Pessoal','whatsapp'), ('Equipe','telegram'), ('Atendimento','chatwoot'), ('Trabalho','whatsapp')]:
-            with patch('central.edit_profile_dialog', return_value=(name,'user',service)):
+            with patch('central.edit_profile_dialog', return_value=(name,'user',service,{'custom_url':'https://support.example.test/'} if service=='chatwoot' else {})):
                 window.add()
         window.show(); app.processEvents()
         selected = window.selected_account()['id']

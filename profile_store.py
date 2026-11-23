@@ -3,7 +3,7 @@ import json
 import os
 import tempfile
 import uuid
-from services import SERVICES
+from services import SERVICES, normalize_custom_url
 from pathlib import Path
 
 ICONS = {'user': 'Pessoal', 'briefcase': 'Trabalho', 'store': 'Loja',
@@ -58,6 +58,7 @@ def _validate(records):
         result.append({'id': identifier, 'name': name, 'archived': archived,
                        'icon': icon, 'avatar_mode': avatar_mode, 'service': service})
         if service == 'telegram':result[-1]['telegram_client'] = client
+        if service == 'custom' or (service=='chatwoot' and record.get('custom_url')):result[-1]['custom_url'] = normalize_custom_url(record.get('custom_url'))
     return result
 
 

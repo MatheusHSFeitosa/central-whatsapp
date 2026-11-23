@@ -15,8 +15,11 @@ with tempfile.TemporaryDirectory() as data:
     with patch.object(QWebEngineView, 'load') as load:
         window = Window()
         window.confirm_close = False
-        for service, config in SERVICES.items():
-            with patch('central.edit_profile_dialog', return_value=(config['name'], 'user', service)):
+        for service, configuration in SERVICES.items():
+            config = dict(configuration)
+            if service in ('custom','chatwoot'):config.update(url='https://chat.example.test/conta',host='chat.example.test')
+            extra={'custom_url':config['url']} if service in ('custom','chatwoot') else {}
+            with patch('central.edit_profile_dialog', return_value=(config['name'], 'user', service, extra)):
                 window.add()
             account = window.accounts[-1]
             assert account['service'] == service
@@ -26,8 +29,8 @@ with tempfile.TemporaryDirectory() as data:
             assert page.acceptNavigationRequest(QUrl(config['url']), QWebEnginePage.NavigationType.NavigationTypeOther, True)
             assert window.photo_auto_action.isEnabled() == (service == 'whatsapp')
             for bad in ('http://' + config['host'], config['url'].replace(config['host'], config['host']+'.evil.test'), config['url'].replace(config['host'], config['host']+':444')):
-                assert not allows_url(service, QUrl(bad))
-        assert len({p.persistentStoragePath() for p in window.profiles.values()}) == 3
+                assert not allows_url(service, QUrl(bad), account.get('custom_url',''))
+        assert len({p.persistentStoragePath() for p in window.profiles.values()}) == len(SERVICES)
         assert [a['service'] for a in window.store.load()] == list(SERVICES)
         window.close()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
@@ -39,4 +42,4 @@ with tempfile.TemporaryDirectory() as data:
     flush = QEventLoop()
     QTimer.singleShot(500, flush.quit)
     flush.exec()
-    print('PASS: três serviços, URLs, origens, foto automática e sessões isoladas')
+    print('PASS: serviços fixos/personalizados, URLs, origens, foto automática e sessões isoladas')

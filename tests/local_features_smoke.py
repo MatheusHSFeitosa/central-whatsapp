@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory() as data:
  with patch.object(QWebEngineView,'load') as load:
   window=Window();window.confirm_close=False
   for name,service in [('Pessoal','whatsapp'),('Equipe','telegram'),('Atendimento','chatwoot')]:
-   with patch('central.edit_profile_dialog',return_value=(name,'user',service)):window.add()
+   with patch('central.edit_profile_dialog',return_value=(name,'user',service,{'custom_url':'https://support.example.test/'} if service=='chatwoot' else {})):window.add()
   groups={a['id']:'Trabalho' for a in window.accounts}
   window.apply_preferences(dict(group_mode='custom',profile_groups=groups))
   window.show();app.processEvents()

@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+echo "A migração CEF 0.12 ainda não foi validada no isolamento do Flatpak. Use a instalação local ou DEB em X11/XWayland." >&2
+exit 1
 base=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 version=$(cat "$base/VERSION")
 cd "$base"

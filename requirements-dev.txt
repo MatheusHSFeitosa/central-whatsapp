@@ -1,0 +1,3 @@
+-r requirements.txt
+# Engine antigo apenas para os testes de regressao da interface.
+PySide6==6.11.3

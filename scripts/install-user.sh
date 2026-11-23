@@ -2,9 +2,11 @@
 set -eu
 base=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 sh "$base/scripts/check-app-closed.sh"
+python3 "$base/scripts/prepare-cef.py"
 dest="$HOME/.local/share/central-whatsapp"
 mkdir -p "$dest" "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/scalable/apps"
-python3 -m venv "$dest/runtime"
+runtime_python=$(python3 -c 'import os, sys; print(os.path.realpath(sys.executable))')
+"$runtime_python" -m venv "$dest/runtime"
 "$dest/runtime/bin/python" -m pip install -r "$base/requirements.txt"
 mkdir -p "$dest/support/downloads"
 if command -v apt-get >/dev/null && command -v dpkg-deb >/dev/null; then
@@ -15,10 +17,13 @@ mkdir -p "$dest/ui-icons"
 install -m644 "$base/ui-icons/"* "$dest/ui-icons/"
 mkdir -p "$dest/service-icons"
 install -m644 "$base/service-icons/"* "$dest/service-icons/"
-install -m644 "$base/ui_widgets.py" "$base/desktop_notifications.py" "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/grouping.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$dest/"
+mkdir -p "$dest/cef-runtime"
+cp -a "$base/build/cef-runtime/." "$dest/cef-runtime"/
+install -m644 "$base/split_workspace.py" "$base/window_chrome.py" "$base/cef_engine.py" "$base/cef_storage.py" "$base/ui_widgets.py" "$base/desktop_notifications.py" "$base/central.py" "$base/profile_store.py" "$base/settings_store.py" "$base/desktop_ui.py" "$base/avatar_manager.py" "$base/services.py" "$base/grouping.py" "$base/VERSION" "$base/whatsapp-web.svg" "$base/check-symbolic.svg" "$dest/"
 cat > "$HOME/.local/bin/central-whatsapp" <<'LAUNCH'
 #!/bin/sh
 export LD_LIBRARY_PATH="$HOME/.local/share/central-whatsapp/support/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export PATH="$HOME/.local/share/central-whatsapp/support/usr/bin:$PATH"
 exec "$HOME/.local/share/central-whatsapp/runtime/bin/python" "$HOME/.local/share/central-whatsapp/central.py" "$@"
 LAUNCH

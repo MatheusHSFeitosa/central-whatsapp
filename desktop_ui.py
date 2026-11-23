@@ -1,7 +1,8 @@
 """Widgets de apresentação; persistência e sessões pertencem à janela principal."""
 import os
 from pathlib import Path
-from services import SERVICES
+from services import SERVICES, normalize_custom_url
+from split_workspace import ProfileArea, LegacyTestArea
 from grouping import SERVICE_COLORS, group_name
 from PySide6.QtCore import Qt, QSize, QRectF, QRect, QByteArray, QTimer, Signal
 from PySide6.QtSvg import QSvgRenderer
@@ -38,6 +39,18 @@ def notification_icon(base, pending):
 
 def service_icon(service):
     if service not in SERVICES:return icon('user')
+    if service == 'custom':
+        image = QPixmap(64, 64)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(SERVICE_COLORS['custom']))
+        painter.drawEllipse(QRectF(0, 0, 64, 64))
+        raw = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + SYMBOLS['globe'] + '</svg>'
+        QSvgRenderer(QByteArray(raw.encode())).render(painter, QRectF(11, 11, 42, 42))
+        painter.end()
+        return QIcon(image)
     image=QPixmap(64,64);image.fill(Qt.GlobalColor.transparent)
     painter=QPainter(image);painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     solid=service in ('telegram','chatwoot')
@@ -64,7 +77,7 @@ def aligned_form():
 
 
 def edit_profile_dialog(parent, title, name='', icon='user', service='whatsapp', editing=False,
-                        *, group_options=(), group='', avatar_mode='service', photo_path='', group_forced=False, automatic_grouping=False):
+                        *, group_options=(), group='', avatar_mode='service', photo_path='', group_forced=False, automatic_grouping=False, custom_url=''):
     dialog=QDialog(parent);dialog.setWindowTitle(title);dialog.resize(470,440)
     layout=QVBoxLayout(dialog);layout.setSpacing(12)
     preview=QLabel();preview.setFixedSize(64,64)
@@ -75,6 +88,12 @@ def edit_profile_dialog(parent, title, name='', icon='user', service='whatsapp',
     for key,config in SERVICES.items():provider.addItem(service_icon(key),config['name'],key)
     provider.setCurrentIndex(max(0,provider.findData(service)));provider.setEnabled(not editing)
     form.addRow('Serviço:',provider)
+    address = QLineEdit(custom_url)
+    address.setObjectName('profileCustomUrl')
+    address.setPlaceholderText('https://chat.suaempresa.com')
+    address.setMaxLength(2048)
+    address.setReadOnly(editing and bool(custom_url))
+    form.addRow('Endereço:', address)
     field=QLineEdit(name);field.setObjectName('profileName');field.setMaxLength(60)
     form.addRow('Nome:',field)
     groups=QComboBox();groups.setObjectName('profileGroup');groups.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon);groups.setMinimumContentsLength(12);groups.addItem('Sem grupo','')
@@ -95,10 +114,12 @@ def edit_profile_dialog(parent, title, name='', icon='user', service='whatsapp',
     form.addRow('Foto:',choose_photo)
     layout.addLayout(form)
     error=QLabel();error.setWordWrap(True);error.hide();layout.addWidget(error)
+    address.textChanged.connect(error.hide)
     touched=[bool(group_forced)]
     def update(*args):
         if automatic_grouping and not touched[0] and not editing:
             groups.blockSignals(True);groups.setCurrentIndex(max(0,groups.findData(SERVICES[provider.currentData()]['name'])));groups.blockSignals(False)
+        form.setRowVisible(address, provider.currentData() in ('custom','chatwoot'))
         creating=groups.currentData() is None
         form.setRowVisible(new_group,creating)
         mode=modes.currentData()
@@ -141,6 +162,11 @@ def edit_profile_dialog(parent, title, name='', icon='user', service='whatsapp',
             else:
                 if any(value.casefold()==existing.casefold() for existing in group_options):message='Este grupo já existe. Selecione-o na lista.'
         if not message and modes.currentData()=='file' and not photo_path:message='Escolha a foto do perfil ou use a logo do serviço.'
+        if not message and provider.currentData() in ('custom','chatwoot'):
+            try:
+                address.setText(normalize_custom_url(address.text()))
+            except ValueError as failure:
+                message = str(failure)
         if message:error.setText(message);error.show();return
         dialog.accept()
     buttons.accepted.connect(accept);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
@@ -149,7 +175,8 @@ def edit_profile_dialog(parent, title, name='', icon='user', service='whatsapp',
         creating=groups.currentData() is None
         return field.text().strip(),choices.currentData(),provider.currentData(),dict(
             group=new_group.text().strip() if creating else groups.currentData(),
-            new_group=creating,group_touched=touched[0],avatar_mode=modes.currentData(),photo_path=photo_path if modes.currentData()=='file' else '')
+            new_group=creating,group_touched=touched[0],avatar_mode=modes.currentData(),photo_path=photo_path if modes.currentData()=='file' else '',
+            custom_url=address.text() if provider.currentData() in ('custom','chatwoot') else '')
     return None
 
 
@@ -536,6 +563,13 @@ class DesktopUIMixin:
         self.mute_action.setCheckable(True)
         self.mute_action.triggered.connect(self.toggle_profile_notifications)
         self.seen_action = self.profile_menu.addAction('Limpar indicador de notificação', self.clear_selected_notification)
+        self.call_permissions_action = QAction('Revisar câmera e microfone…', self)
+        self.call_permissions_action.triggered.connect(self.reset_call_permissions)
+        menu.addSeparator()
+        self.split_action=menu.addAction(icon('group'),'Dividir tela…',self.show_split_dialog)
+        self.split_action.setShortcut('Ctrl+\\')
+        self.split_exit_action=menu.addAction('Voltar a um perfil',lambda:self.stack.leave_split())
+        self.split_exit_action.setEnabled(False)
         menu.addSeparator()
         self.preferences_action = menu.addAction(icon('preferences-system'), 'Preferências…', self.show_preferences)
         menu.addSeparator()
@@ -559,6 +593,7 @@ class DesktopUIMixin:
         self.profile_menu.addMenu(self.telegram_menu)
         self.profile_menu.addSeparator()
         self.profile_menu.addAction(self.reload_button)
+        self.profile_menu.addAction(self.call_permissions_action)
         self.profile_menu.addSeparator()
         self.profile_menu.addAction(self.mute_action)
         self.profile_menu.addAction(self.seen_action)
@@ -569,7 +604,7 @@ class DesktopUIMixin:
                 (self.rename_button,'document-edit'), (self.archive_button,'folder-download'),
                 (self.restore_button,'edit-undo'), (photo_menu.menuAction(),'user'),
                 (self.preferences_action,'preferences-system'), (self.quit_action,'application-exit'),
-                (self.group_action,'group'), (self.mute_action,'mute'), (self.seen_action,'seen')]:
+                (self.group_action,'group'), (self.call_permissions_action,'microphone'), (self.mute_action,'mute'), (self.seen_action,'seen')]:
             action.setProperty('iconPreset', preset)
         self.sidebar_toolbar.addWidget(self.sidebar_toggle)
         self.app_name = QLabel('Central Chats')
@@ -577,13 +612,15 @@ class DesktopUIMixin:
         app_font = self.app_name.font();app_font.setBold(True);self.app_name.setFont(app_font)
         self.sidebar_toolbar.addWidget(self.app_name,1)
         side.addWidget(self.menu_button, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.stack = QStackedWidget()
-        welcome = QLabel('Adicione um perfil de WhatsApp, Telegram ou Chatwoot.\nEntre na conta pela tela do serviço.\n\nCada perfil mantém uma sessão independente.')
+        self.stack = LegacyTestArea() if getattr(self,'use_legacy_test_engine',False) else ProfileArea()
+        welcome = QLabel('Adicione um perfil de WhatsApp, Telegram, Chatwoot ou chat personalizado.\nEntre na conta pela tela do serviço.\n\nCada perfil mantém uma sessão independente.')
         welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
         welcome.setWordWrap(True)
         welcome.setContentsMargins(24, 24, 24, 24)
         self.stack.addWidget(welcome)
         content.addWidget(self.stack, 1)
+        self.stack.splitChanged.connect(self.split_exit_action.setEnabled)
+        self.stack.activeChanged.connect(self.split_focus_changed)
         self.list.currentRowChanged.connect(self.select)
         self.apply_sidebar(False)
         self.apply_gnome_style()
@@ -622,6 +659,7 @@ class DesktopUIMixin:
                 preset = action.property('iconPreset')
                 if preset: action.setIcon(icon(preset))
         self.title_bar.refresh_icons()
+        self.stack.refresh_icons()
         compact = self.settings.get('sidebar_collapsed',False)
         self.sidebar_toggle.configure(self.windowIcon(),icon('sidebar-show' if compact else 'sidebar-hide'),'Expandir barra lateral' if compact else 'Recolher barra lateral')
         for i, account in enumerate(self.accounts):
@@ -633,6 +671,10 @@ class DesktopUIMixin:
             QMainWindow {{ background: transparent; }}
             QWidget#centralRoot {{ background: {main}; border-radius: 12px; }}
             QWidget#centralRoot[squareCorners="true"] {{ border-radius: 0; }}
+            QWidget#splitHeader {{ background: {side}; border-bottom: 1px solid {border}; }}
+            QWidget#splitDivider {{ background: {border}; }}
+            QListWidget#splitProfilePicker::indicator {{ width: 16px; height: 16px; border: 1px solid {muted}; border-radius: 4px; background: {side}; }}
+            QListWidget#splitProfilePicker::indicator:checked {{ background: {accent}; border-color: {accent}; image: url('{check_asset}'); }}
             QWidget#serviceLoadingPanel {{ background: {main}; }}
             QWidget#centralTitleBar {{ border-top-left-radius: 12px; border-top-right-radius: 12px; background: {side}; border-bottom: 1px solid {border}; }}
             QWidget#centralRoot[squareCorners="true"] QWidget#centralTitleBar {{ border-radius: 0; }}

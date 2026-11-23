@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from services import SERVICES, allows_url, service_url
+from services import SERVICES, allows_url, service_url, normalize_custom_url
 import json
 import re
 from itertools import count
@@ -14,93 +14,101 @@ from avatar_manager import AvatarManager, OWN_AVATAR_SCRIPT
 from profile_store import ProfileStore
 from settings_store import PreferencesStore, AutostartManager
 from desktop_notifications import DesktopNotifications
+from split_workspace import SplitDialog
+from window_chrome import WindowChrome
 from desktop_ui import DesktopUIMixin, PreferencesDialog, edit_profile_dialog, icon, notification_icon, service_icon, COLLAPSED_ROLE, GROUP_ROLE, GROUP_KEY_ROLE, EMPTY_GROUP_ROLE
-from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect, QEvent, Signal, QTemporaryDir, QSignalBlocker, QMimeDatabase, QTranslator, QLibraryInfo
+from PySide6.QtCore import QUrl, QLockFile, QTimer, Qt, QRect, QRectF, QEvent, Signal, QTemporaryDir, QSignalBlocker, QMimeDatabase, QTranslator, QLibraryInfo
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtGui import QDesktopServices, QIcon, QColor, QPainter
+from PySide6.QtGui import QDesktopServices, QIcon, QColor, QPainter, QPainterPath, QRegion
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
  QListWidget, QPushButton, QLabel, QStackedWidget, QSystemTrayIcon, QDialogButtonBox, QCheckBox)
 from ui_widgets import (
     Dialog as QDialog, Menu as QMenu, InputDialog as QInputDialog,
     MessageBox as QMessageBox, FileDialog as QFileDialog, ColorDialog as QColorDialog,
 )
-from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEnginePermission, QWebEngineSettings, QWebEngineLoadingInfo
-from PySide6.QtWebEngineWidgets import QWebEngineView
+USE_QT_TEST_ENGINE = os.environ.get('CENTRAL_BROWSER_ENGINE') == 'qt-test'
+if USE_QT_TEST_ENGINE:
+    from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage, QWebEnginePermission, QWebEngineSettings, QWebEngineLoadingInfo
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+else:
+    from cef_engine import Profile as CefProfile, ServiceView as CefServiceView, Permission as QWebEnginePermission
 
 DATA = Path(os.environ.get('CENTRAL_WHATSAPP_DATA', str(Path(os.environ.get('XDG_DATA_HOME',str(Path.home()/'.local/share')))/'central-whatsapp-data')))
 CONFIG = DATA/'profiles.json'
 
-class Page(QWebEnginePage):
-    initialResourceFailed = Signal()
+if USE_QT_TEST_ENGINE:
+    class Page(QWebEnginePage):
+        initialResourceFailed = Signal()
 
-    def __init__(self, profile, parent=None, service="whatsapp"):
-        super().__init__(profile, parent)
-        self.service = service
-        self.newWindowRequested.connect(self.open_requested_window)
+        def __init__(self, profile, parent=None, service="whatsapp", custom_url=""):
+            super().__init__(profile, parent)
+            self.service = service
+            self.custom_url = custom_url
+            self.newWindowRequested.connect(self.open_requested_window)
 
-    def javaScriptConsoleMessage(self, level, message, line, source):
-        if self.service == 'telegram' and 'Failed to fetch dynamically imported module' in message:
-            self.initialResourceFailed.emit()
-        super().javaScriptConsoleMessage(level,message,line,source)
+        def javaScriptConsoleMessage(self, level, message, line, source):
+            if self.service == 'telegram' and 'Failed to fetch dynamically imported module' in message:
+                self.initialResourceFailed.emit()
+            super().javaScriptConsoleMessage(level,message,line,source)
 
-    def acceptNavigationRequest(self, url, kind, main):
-        if allows_url(self.service, url):
-            return True
-        if main and kind == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
-            self.open_external(url)
-        return False
+        def acceptNavigationRequest(self, url, kind, main):
+            if allows_url(self.service, url, self.custom_url):
+                return True
+            if main and kind == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
+                self.open_external(url)
+            return False
 
-    @staticmethod
-    def open_external(url):
-        if not url.isValid() or url.userInfo():
-            return
-        if (url.scheme() in ('https', 'http') and url.host()) or url.scheme() == 'mailto':
-            QDesktopServices.openUrl(url)
+        @staticmethod
+        def open_external(url):
+            if not url.isValid() or url.userInfo():
+                return
+            if (url.scheme() in ('https', 'http') and url.host()) or url.scheme() == 'mailto':
+                QDesktopServices.openUrl(url)
 
-    def open_requested_window(self, request):
-        if not request.isUserInitiated():
-            return
-        url = request.requestedUrl()
-        if allows_url(self.service, url):
-            self.setUrl(url)
-        else:
-            self.open_external(url)
+        def open_requested_window(self, request):
+            if not request.isUserInitiated():
+                return
+            url = request.requestedUrl()
+            if allows_url(self.service, url, self.custom_url):
+                self.setUrl(url)
+            else:
+                self.open_external(url)
 
 
-class ServiceView(QWebEngineView):
-    """A local recovery panel, without injecting privileged code into web content."""
-    def __init__(self):
-        super().__init__()
-        self.loading_panel = QWidget(self)
-        self.loading_panel.setObjectName('serviceLoadingPanel')
-        layout = QVBoxLayout(self.loading_panel)
-        layout.addStretch()
-        self.loading_title = QLabel();self.loading_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.loading_title.setWordWrap(True);layout.addWidget(self.loading_title)
-        self.retry_button = QPushButton('Tentar novamente')
-        self.alternative_button = QPushButton('Usar outro cliente do Telegram')
-        for button in (self.retry_button,self.alternative_button):
-            button.setMaximumWidth(300);layout.addWidget(button,0,Qt.AlignmentFlag.AlignHCenter)
-        layout.addStretch();self.loading_panel.hide()
+    class ServiceView(QWebEngineView):
+        """A local recovery panel, without injecting privileged code into web content."""
+        def __init__(self):
+            super().__init__()
+            self.loading_panel = QWidget(self)
+            self.loading_panel.setObjectName('serviceLoadingPanel')
+            layout = QVBoxLayout(self.loading_panel)
+            layout.addStretch()
+            self.loading_title = QLabel();self.loading_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.loading_title.setWordWrap(True);layout.addWidget(self.loading_title)
+            self.retry_button = QPushButton('Tentar novamente')
+            self.alternative_button = QPushButton('Usar outro cliente do Telegram')
+            for button in (self.retry_button,self.alternative_button):
+                button.setMaximumWidth(300);layout.addWidget(button,0,Qt.AlignmentFlag.AlignHCenter)
+            layout.addStretch();self.loading_panel.hide()
 
-    def contextMenuEvent(self, event):
-        request = self.lastContextMenuRequest()
-        menu = self.createStandardContextMenu()
-        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        if request and request.mediaType() == request.MediaType.MediaTypeVideo:
-            download = self.pageAction(QWebEnginePage.WebAction.DownloadMediaToDisk)
-            if download in menu.actions():
-                download.setText('Salvar vídeo para abrir no player…')
-        menu.exec(event.globalPos())
-        menu.deleteLater()
+        def contextMenuEvent(self, event):
+            request = self.lastContextMenuRequest()
+            menu = self.createStandardContextMenu()
+            menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            if request and request.mediaType() == request.MediaType.MediaTypeVideo:
+                download = self.pageAction(QWebEnginePage.WebAction.DownloadMediaToDisk)
+                if download in menu.actions():
+                    download.setText('Salvar vídeo para abrir no player…')
+            menu.exec(event.globalPos())
+            menu.deleteLater()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.loading_panel.setGeometry(self.rect())
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            self.loading_panel.setGeometry(self.rect())
 
-    def show_loading(self, message):
-        self.loading_title.setText(message)
-        self.loading_panel.setGeometry(self.rect());self.loading_panel.show();self.loading_panel.raise_()
+        def show_loading(self, message):
+            self.loading_title.setText(message)
+            self.loading_panel.setGeometry(self.rect());self.loading_panel.show();self.loading_panel.raise_()
 
 
 class Window(DesktopUIMixin, QMainWindow):
@@ -109,7 +117,7 @@ class Window(DesktopUIMixin, QMainWindow):
         self._system_palette = QApplication.palette()
         self.setWindowTitle('Central Chats')
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, USE_QT_TEST_ENGINE)
         self.resize(1250, 820)
         self.setWindowIcon(QIcon(str(Path(__file__).with_name('whatsapp-web.svg'))))
         self.views, self.profiles, self.load_states = {}, {}, {}
@@ -122,6 +130,7 @@ class Window(DesktopUIMixin, QMainWindow):
         self.desktop_notifications.clicked.connect(self.open_notification)
         self.desktop_notifications.dismissed.connect(self.dismiss_notification)
         self.pending_notifications = set()
+        self.capture_permissions = {}
         self._startup_ready = set()
         self._retry_counts = {}
         self._retry_pending = {}
@@ -146,13 +155,37 @@ class Window(DesktopUIMixin, QMainWindow):
         except (ValueError, OSError) as error:
             QMessageBox.critical(self, 'Dados indisponíveis', f'Os dados foram preservados. Não foi possível ler a configuração: {error}')
             raise SystemExit(1)
+        self.use_legacy_test_engine=USE_QT_TEST_ENGINE
         self.build_ui()
+        if not USE_QT_TEST_ENGINE:self.chrome=WindowChrome(self)
         QApplication.styleHints().colorSchemeChanged.connect(lambda *_: self.apply_gnome_style())
         self.setup_tray()
         self.refresh()
         self.avatar_timer = QTimer(self)
         self.avatar_timer.timeout.connect(self.poll_avatars)
         self.avatar_timer.start(30000)
+
+    def split_focus_changed(self,view):
+        row=next((i for i,a in enumerate(self.accounts) if self.views.get(a['id'],(None,))[0] is view),-1)
+        if row>=0:
+            with QSignalBlocker(self.list):self.list.setCurrentRow(row)
+            self.update_status(self.accounts[row]['id']);self.update_actions()
+    def show_split_dialog(self):
+        selected=[key for key,(view,_) in self.views.items() if self.stack.isDisplayed(view)]
+        dialog=SplitDialog(self,self.accounts,lambda a:self.profile_group(a) or self.assigned_group(a) or SERVICES[a.get('service','whatsapp')]['name'],selected)
+        if dialog.exec()==QDialog.DialogCode.Accepted:self.activate_split(dialog.selected_ids(),dialog.arrangement.currentData())
+        dialog.deleteLater()
+    def activate_split(self,identifiers,mode='columns'):
+        if not 2<=len(identifiers)<=4 or len(set(identifiers))!=len(identifiers):raise ValueError('Selecione de 2 a 4 perfis diferentes')
+        rows=[next((i for i,a in enumerate(self.accounts) if a['id']==key),-1) for key in identifiers]
+        if any(row<0 for row in rows):raise ValueError('Perfil indisponível')
+        for row in rows:self.select(row,force=True)
+        if any(key not in self.views for key in identifiers):return False
+        self.stack.set_names({self.views[a['id']][0]:a['name'] for a in self.accounts if a['id'] in self.views})
+        self.stack.set_split([self.views[key][0] for key in identifiers],mode)
+        with QSignalBlocker(self.list):self.list.setCurrentRow(rows[0])
+        self.stack.setCurrentWidget(self.views[identifiers[0]][0]);self.update_actions()
+        return True
 
     def setup_tray(self):
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
@@ -173,6 +206,11 @@ class Window(DesktopUIMixin, QMainWindow):
             self.show_window()
 
     def update_window_corners(self):
+        if not USE_QT_TEST_ENGINE:
+            if self.isMaximized() or self.isFullScreen():self.clearMask()
+            else:
+                path=QPainterPath();path.addRoundedRect(QRectF(self.rect()),12,12)
+                self.setMask(QRegion(path.toFillPolygon().toPolygon()))
         square = self.isMaximized() or self.isFullScreen()
         root = self.centralWidget()
         if root and root.property('squareCorners') != square:
@@ -299,6 +337,7 @@ class Window(DesktopUIMixin, QMainWindow):
         for client,action in self.telegram_actions.items():action.setChecked(bool(account and account.get('telegram_client','a')==client))
         self.profile_header.setText(account['name']+' · '+SERVICES[account.get('service','whatsapp')]['name'] if account else 'Perfil')
         self.group_action.setEnabled(selected)
+        self.call_permissions_action.setEnabled(bool(account and account['id'] in self.views))
         self.mute_action.setEnabled(selected)
         self.mute_action.setChecked(selected and self.accounts[self.list.currentRow()]['id'] in self.settings['muted_profiles'])
         self.seen_action.setEnabled(selected and self.accounts[self.list.currentRow()]['id'] in self.pending_notifications)
@@ -463,7 +502,7 @@ class Window(DesktopUIMixin, QMainWindow):
             self.update_actions()
 
     def viewing_profile(self, key):
-        return bool(key in self.views and self.stack.currentWidget() is self.views[key][0]
+        return bool(key in self.views and self.stack.isDisplayed(self.views[key][0])
                     and self.isVisible() and not self.isMinimized() and self.isActiveWindow())
 
     def changeEvent(self, event):
@@ -549,7 +588,8 @@ class Window(DesktopUIMixin, QMainWindow):
         photo=self.avatar_manager.path(current['id']) if current.get('id') else None
         result=edit_profile_dialog(self,title,current['name'],current.get('icon','user'),current.get('service','whatsapp'),editing,
             group_options=options,group=initial_group,group_forced=default_group is not None,
-            avatar_mode=current.get('avatar_mode','auto'),photo_path=str(photo) if photo and photo.exists() else '',automatic_grouping=automatic)
+            avatar_mode=current.get('avatar_mode','auto'),photo_path=str(photo) if photo and photo.exists() else '',automatic_grouping=automatic,
+            custom_url=current.get('custom_url',''))
         if result is None:return None
         name,preset=result[:2];service=result[2] if len(result)>2 else current.get('service','whatsapp')
         extra=result[3] if len(result)>3 else {}
@@ -560,7 +600,8 @@ class Window(DesktopUIMixin, QMainWindow):
             QMessageBox.information(self,'Nome já usado','Escolha outro nome para o perfil.');return None
         draft=dict(name=name,icon=preset,service=service,avatar_mode=extra.get('avatar_mode',current.get('avatar_mode','service')),
             photo_path=extra.get('photo_path',''),group=extra.get('group',default_group or ''),
-            new_group=extra.get('new_group',False),group_touched=extra.get('group_touched',default_group is not None))
+            new_group=extra.get('new_group',False),group_touched=extra.get('group_touched',default_group is not None),
+            custom_url=extra.get('custom_url',current.get('custom_url','')))
         return draft
 
     def commit_profile(self, draft, row=None):
@@ -568,6 +609,10 @@ class Window(DesktopUIMixin, QMainWindow):
         key=self.accounts[row]['id'] if row is not None else str(uuid.uuid4())
         account=dict(self.accounts[row]) if row is not None else {'id':key}
         account.update({field:draft[field] for field in ('name','icon','service','avatar_mode')})
+        if account['service'] in ('custom','chatwoot'):
+            account['custom_url'] = draft.get('custom_url', '')
+        else:
+            account.pop('custom_url', None)
         accounts=[dict(a) for a in self.accounts]
         if row is None:accounts.append(account)
         else:accounts[row]=account
@@ -575,6 +620,10 @@ class Window(DesktopUIMixin, QMainWindow):
         target=self.avatar_manager.path(key);previous_photo=None
         photo_written=False;profile_written=False
         try:
+            if account['service'] in ('custom','chatwoot'):
+                account['custom_url'] = normalize_custom_url(account['custom_url'])
+                if row is not None and self.accounts[row].get('custom_url') and account['custom_url'] != self.accounts[row].get('custom_url'):
+                    raise ValueError('Crie outro perfil para usar um endereço diferente.')
             if target.exists():previous_photo=target.read_bytes()
             if draft.get('group_touched'):
                 candidate=custom_settings(self.settings,self.accounts+self.archived)
@@ -633,12 +682,14 @@ class Window(DesktopUIMixin, QMainWindow):
         for token, entry in list(self.notifications.items()):
             if entry[0] == account['id']:
                 self.dismiss_notification(token)
+        self.capture_permissions.pop(account['id'], None)
         item = self.views.pop(account['id'], None)
         if item:
             view, profile = item
             view.loadStarted.disconnect(); view.loadFinished.disconnect()
             self.stack.removeWidget(view); view.stop()
-            view.page().deleteLater(); view.deleteLater()
+            view.page().deleteLater()
+            if USE_QT_TEST_ENGINE:view.deleteLater()
             # Reutilizar o mesmo perfil ao restaurar evita abrir dois armazenamentos iguais.
         self.load_states.pop(account['id'], None)
         self._startup_ready.discard(account['id']);self._retry_counts.pop(account['id'],None);self._retry_pending.pop(account['id'],None);self._load_generations[account['id']]=self._load_generations.get(account['id'],0)+1
@@ -685,6 +736,14 @@ class Window(DesktopUIMixin, QMainWindow):
         if row<0 or row>=len(self.accounts) or (self.list.item(row).data(COLLAPSED_ROLE) and not force):
             self.update_actions(); return
         account=self.accounts[row]; key=account['id']
+        if account.get('service')=='chatwoot' and not account.get('custom_url'):
+            address,ok=QInputDialog.getText(self,'Endereço do Chatwoot','Informe o endereço HTTPS do seu Chatwoot:')
+            if not ok:return
+            try:address=normalize_custom_url(address)
+            except ValueError as error:QMessageBox.information(self,'Endereço inválido',str(error));return
+            candidate=[dict(a,custom_url=address) if a['id']==key else dict(a) for a in self.accounts]
+            if not self.save(accounts=candidate):return
+            self.accounts=candidate;account=self.accounts[row]
         if key not in self.views:
             try:
                 folder = self.store.session_path(key)
@@ -694,25 +753,41 @@ class Window(DesktopUIMixin, QMainWindow):
                 self.update_status(key); self.update_actions()
                 QMessageBox.critical(self, 'Não foi possível abrir o perfil', f'A sessão foi preservada. {error}')
                 return
-            profile=self.profiles.get(key)
-            if profile is None:
-                profile=QWebEngineProfile(key,self)
+            if USE_QT_TEST_ENGINE:
+                profile=self.profiles.get(key)
+                if profile is None:
+                    profile=QWebEngineProfile(key,self)
+                    self.profiles[key]=profile
+                    profile.downloadRequested.connect(self.download)
+                # O WhatsApp rejeita o identificador QtWebEngine; mantém a versão real do Chromium.
+                ua = re.sub(r'\sQtWebEngine/[^ ]+', '', profile.httpUserAgent())
+                ua = re.sub(r'\scentral-whatsapp/[^ ]+', '', ua)
+                profile.setHttpUserAgent(ua)
+                profile.setPersistentStoragePath(str(folder/'storage')); profile.setCachePath(str(folder/'cache'))
+                profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
+                profile.setHttpCacheMaximumSize(100*1024*1024)
+                profile.setHttpAcceptLanguage('pt-BR,pt;q=0.9,en;q=0.7')
+                profile.setNotificationPresenter(lambda n,k=key:self.notify(k,n))
+                view=ServiceView(); page=Page(profile,view,account.get('service','whatsapp'),account.get('custom_url',''));view.setPage(page)
+                page.settings().setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled,True)
+                page.settings().setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture,False)
+                page.fullScreenRequested.connect(lambda request,k=key:self.media_fullscreen(k,request))
+                page.initialResourceFailed.connect(lambda k=key:self.check_initial_content(k))
+                page.loadingChanged.connect(lambda info,k=key:self.load_information(k,info))
+            else:
+                profile=CefProfile(self)
                 self.profiles[key]=profile
                 profile.downloadRequested.connect(self.download)
-            # O WhatsApp rejeita o identificador QtWebEngine; mantém a versão real do Chromium.
-            ua = re.sub(r'\sQtWebEngine/[^ ]+', '', profile.httpUserAgent())
-            ua = re.sub(r'\scentral-whatsapp/[^ ]+', '', ua)
-            profile.setHttpUserAgent(ua)
-            profile.setPersistentStoragePath(str(folder/'storage')); profile.setCachePath(str(folder/'cache'))
-            profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies)
-            profile.setHttpCacheMaximumSize(100*1024*1024)
-            profile.setHttpAcceptLanguage('pt-BR,pt;q=0.9,en;q=0.7')
-            profile.setNotificationPresenter(lambda n,k=key:self.notify(k,n))
-            view=ServiceView(); page=Page(profile,view,account.get('service','whatsapp'));view.setPage(page)
-            page.settings().setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled,True)
-            page.fullScreenRequested.connect(lambda request,k=key:self.media_fullscreen(k,request))
-            page.initialResourceFailed.connect(lambda k=key:self.check_initial_content(k))
-            page.loadingChanged.connect(lambda info,k=key:self.load_information(k,info))
+                profile.setNotificationPresenter(lambda n,k=key:self.notify(k,n))
+                try:
+                    view=CefServiceView(folder,account,profile)
+                except (ValueError,OSError) as error:
+                    self.profiles.pop(key,None);profile.deleteLater()
+                    self.load_states[key]='error';self.update_status(key);self.update_actions()
+                    QMessageBox.critical(self,'Não foi possível preparar o novo motor',f'A sessão antiga foi preservada. {error}')
+                    return
+                page=view
+                page.fullScreenRequested.connect(lambda request,k=key:self.media_fullscreen(k,request))
             view.retry_button.clicked.connect(lambda checked=False,k=key:self.retry_service(k))
             view.alternative_button.clicked.connect(lambda checked=False,k=key:self.other_telegram_client(k))
             page.permissionRequested.connect(lambda permission,k=key:self.permission(k,permission))
@@ -722,7 +797,7 @@ class Window(DesktopUIMixin, QMainWindow):
             self.load_states[key] = 'loading'
             view.load(QUrl(service_url(account)))
         if self._fullscreen_key and self._fullscreen_key!=key and self._fullscreen_key in self.views:
-            self.views[self._fullscreen_key][0].page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen)
+            self.views[self._fullscreen_key][0].page().runJavaScript('document.exitFullscreen?.()')
         self.stack.setCurrentWidget(self.views[key][0])
         if self.viewing_profile(key):self.clear_selected_notification()
         self.update_status(key)
@@ -810,13 +885,14 @@ class Window(DesktopUIMixin, QMainWindow):
     def keyPressEvent(self, event):
         if event.key()==Qt.Key.Key_Escape and self._fullscreen_state is not None:
             widget=self.views.get(self._fullscreen_key,(self.stack.currentWidget(),None))[0]
-            if isinstance(widget,QWebEngineView):widget.page().triggerAction(QWebEnginePage.WebAction.ExitFullScreen)
+            if hasattr(widget,'page'):widget.page().runJavaScript('document.exitFullscreen?.()')
             event.accept();return
         super().keyPressEvent(event)
 
     def media_fullscreen(self, key, request):
         if request.toggleOn():
-            if key not in self.views or self.stack.currentWidget() is not self.views[key][0]:request.reject();return
+            if key not in self.views or not self.stack.isDisplayed(self.views[key][0]):request.reject();return
+            self.stack.begin_fullscreen(self.views[key][0])
             self._fullscreen_state=self.windowState();self._fullscreen_key=key
             request.accept()
             self.showFullScreen()
@@ -826,6 +902,7 @@ class Window(DesktopUIMixin, QMainWindow):
             request.accept()
             state=self._fullscreen_state if self._fullscreen_state is not None else Qt.WindowState.WindowNoState
             self.setWindowState(state);self._fullscreen_state=None;self._fullscreen_key=None
+            self.stack.end_fullscreen()
             self.title_bar.show();self.sidebar.show();self.update_window_corners()
 
     def profile_icon(self, account):
@@ -935,14 +1012,45 @@ class Window(DesktopUIMixin, QMainWindow):
                         'Não foi possível identificar sua própria foto nesta tela. Confira se a conta está conectada e sua foto aparece na barra do WhatsApp. Você também pode usar Botão direito no perfil → Foto do perfil → Usar foto do computador.')
         page.runJavaScript('JSON.stringify('+OWN_AVATAR_SCRIPT+')',received)
 
+    def reset_call_permissions(self):
+        account = self.selected_account()
+        if not account or account['id'] not in self.views:
+            return
+        if QMessageBox.question(self, 'Câmera e microfone',
+                'Revisar as permissões e recarregar este perfil? Uma ligação em andamento será interrompida. Na próxima ligação, o chat pedirá autorização novamente.') != QMessageBox.StandardButton.Yes:
+            return
+        if not USE_QT_TEST_ENGINE:
+            self.views[account['id']][0].reload()
+            QMessageBox.information(self, 'Permissões revisadas', 'Inicie a ligação novamente. O novo motor solicita autorização para câmera e microfone a cada chamada.')
+            return
+        profile = self.views[account['id']][1]
+        origin = QUrl(service_url(account))
+        kinds = (
+            QWebEnginePermission.PermissionType.MediaAudioCapture,
+            QWebEnginePermission.PermissionType.MediaVideoCapture,
+            QWebEnginePermission.PermissionType.MediaAudioVideoCapture,
+        )
+        previous = self.capture_permissions.pop(account['id'], {})
+        for kind in kinds:
+            permission = previous.get(kind)
+            if permission is None or not permission.isValid():
+                permission = profile.queryPermission(origin, kind)
+            if permission.isValid():
+                permission.reset()
+        self.views[account['id']][0].reload()
+        QMessageBox.information(self, 'Permissões revisadas',
+            'Inicie a ligação novamente e permita o uso da câmera e do microfone quando o chat solicitar.')
+
     def permission(self,key,permission):
         account=next((a for a in self.accounts if a['id']==key),None)
-        if key not in self.views or not account or not allows_url(account.get('service','whatsapp'), permission.origin()):permission.deny();return
+        if key not in self.views or not account or not allows_url(account.get('service','whatsapp'), permission.origin(), account.get('custom_url','')):permission.deny();return
         kind=permission.permissionType()
         allowed={QWebEnginePermission.PermissionType.Notifications:'mostrar notificações',QWebEnginePermission.PermissionType.MediaAudioCapture:'usar o microfone',QWebEnginePermission.PermissionType.MediaVideoCapture:'usar a câmera',QWebEnginePermission.PermissionType.MediaAudioVideoCapture:'usar câmera e microfone'}
         if kind not in allowed:permission.deny();return
+        if kind != QWebEnginePermission.PermissionType.Notifications:
+            self.capture_permissions.setdefault(key, {})[kind] = permission
         name=next((a['name'] for a in self.accounts if a['id']==key),'Perfil')
-        if QMessageBox.question(self,'Permissão do serviço',f'{name}: permitir {allowed[kind]}?')==QMessageBox.StandardButton.Yes:permission.grant()
+        if QMessageBox.question(self,'Permissão do serviço',f'{name}\n{permission.origin().toDisplayString()}\n\nPermitir {allowed[kind]}?')==QMessageBox.StandardButton.Yes:permission.grant()
         else:permission.deny()
 
     def notify(self,key,notification):
@@ -1049,13 +1157,16 @@ class Window(DesktopUIMixin, QMainWindow):
             return
         self._cleaned = True
         self.avatar_timer.stop()
+        if hasattr(self,'chrome'):self.chrome.close()
+        self.capture_permissions.clear()
         self.tray.hide()
         for token in list(self.notifications):
             self.dismiss_notification(token)
         for view, profile in self.views.values():
+            self.stack.removeWidget(view)
             view.stop()
             view.page().deleteLater()
-            view.deleteLater()
+            if USE_QT_TEST_ENGINE:view.deleteLater()
         self.views.clear()
 
     def quit_app(self):
@@ -1148,6 +1259,9 @@ class ActivationServer:
 
 def main():
     app = QApplication(sys.argv)
+    if not USE_QT_TEST_ENGINE and app.platformName() != 'xcb':
+        QMessageBox.critical(None, 'Sessão gráfica incompatível', 'O novo motor requer X11 ou XWayland. Abra a Central pelo atalho instalado, que seleciona essa compatibilidade.')
+        return 1
     app.setStyle('Fusion')
     translator = QTranslator(app)
     if translator.load('qtbase_pt_BR', QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):

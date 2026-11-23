@@ -49,6 +49,8 @@ def icon(preset):
 
 
 SYMBOLS.update({
+    'globe': '<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>',
+    'microphone': '<rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>',
     'window-minimize': '<path d="M6 12h12"/>',
     'window-maximize': '<rect x="5" y="5" width="14" height="14" rx="2"/>',
     'window-restore': '<rect x="4" y="8" width="12" height="12" rx="2"/><path d="M8 8V4h12v12h-4"/>',
@@ -133,6 +135,12 @@ class DialogChrome:
         self._position_header()
         # Let Qt account for the header before choosing the final size.
         self.resize(self.size().expandedTo(self.minimumSizeHint()))
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange and hasattr(self, '_close'):
+            self._close.setIcon(icon('window-close'))
+            self.update()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

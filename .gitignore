@@ -8,3 +8,12 @@ repo/
 *.deb
 *.flatpak
 *.log
+
+# Runtime, profiles and local installation data must never be published.
+cef-runtime/
+sessions/
+profiles.json
+settings.json
+*.lock
+core
+core.*

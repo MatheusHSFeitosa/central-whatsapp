@@ -1,5 +1,48 @@
 # Alterações
 
+## 0.13.0 — prévia pública
+
+- Divisão de 2 a 4 perfis, combinando grupos, com colunas, linhas e grade.
+- Ajuste entre dois painéis e retorno à aba individual sem recriar sessões.
+- Redimensionamento em todas as bordas/cantos e arraste em áreas vazias ou com Alt.
+- Chatwoot genérico com endereço HTTPS escolhido pelo usuário.
+- Documentação pública, mockups fictícios, créditos, referências e declaração de apoio de IA.
+- Matriz de testes Linux amd64 em Ubuntu 22.04/24.04.
+
+## 0.12.2 — integração no XWayland
+
+- Fixa Ozone/X11 no host CEF para acompanhar a interface Qt/xcb.
+- Evita janelas Wayland separadas por perfil em sessões como COSMIC no Pop!_OS 24.04.
+- Mantém os perfis dentro da mesma janela usando o armazenamento CEF existente.
+
+## 0.12.1 — correção de eventos nativos
+
+- Substitui o bombeamento manual de tarefas pelo loop nativo GLib do CEF.
+- Comandos locais são processados por um observador de stdin no mesmo loop, sem tarefas CAPI entre threads.
+- Corrige área web presa em 1000 × 600 e processamento de mouse/teclado/redimensionamento.
+- Novo teste reproduz o defeito na 0.12.0 e valida tamanho real do viewport, clique X11 e digitação na correção.
+
+## 0.12.0 — migração local CEF
+
+- CEF 152 como motor padrão; Qt mantém a interface, sem Electron.
+- H.264/AAC e chamadas H.264/Opus; câmera e microfone com autorização por origem.
+- Hosts isolados por perfil e cópia única do armazenamento Qt, preservando o original.
+- Links externos por gesto, downloads, anexos, tela cheia e notificações da página integrados.
+- Cantos recortados via X11, mantendo o pai nativo opaco exigido pelo CEF.
+- Runtime fixado, procedência/licenças e instalação local/DEB atualizados.
+- Flatpak bloqueado até validar seu isolamento com CEF.
+- Chamadas reais confirmadas pelo usuário no laboratório; regressão da janela completa com dados sintéticos.
+
+## 0.11.0 — validação local
+
+- Novo serviço Chat personalizado com endereço HTTPS informado na criação e sessão independente.
+- Validação e preservação do endereço por perfil, com navegação e permissões restritas à origem escolhida.
+- Avatar padrão para chats personalizados e escolha de grupo/foto no mesmo formulário.
+- Reprodução de áudio de chamadas habilitada nos perfis e ação para revisar câmera/microfone.
+- Revisão das permissões usa as solicitações efetivas da página e recarrega somente o perfil escolhido.
+- Captura com autorização e transmissão bidirecional de áudio/vídeo verificadas com dispositivos simulados.
+
+
 ## 0.10.0 — 07/11/2026
 
 - Cabeçalhos próprios em preferências, edição de perfil, confirmação, seleção de arquivo e escolha de cor.
@@ -52,7 +95,7 @@
 - Ícone próprio de conversas, temas claro/escuro/automático GNOME e barra à esquerda, acima ou abaixo.
 - Agrupamento por serviço ou nomes de grupos personalizados definidos por perfil.
 
-- Perfis de WhatsApp, Telegram Web A e Chatwoot G3 na mesma central.
+- Perfis de WhatsApp, Telegram Web A e Chatwoot na mesma central.
 - Seleção de serviço na criação, com sessões independentes e migração compatível dos perfis existentes.
 - Navegação e permissões restritas à origem HTTPS de cada serviço.
 - Fotos locais e ícones em todos os serviços; busca automática exclusiva do WhatsApp.

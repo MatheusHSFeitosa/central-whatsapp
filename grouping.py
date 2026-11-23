@@ -3,7 +3,7 @@ from copy import deepcopy
 from services import SERVICES
 
 DEFAULT_GROUP_COLOR = '#72767a'
-SERVICE_COLORS = {'whatsapp':'#25d366','telegram':'#26a5e4','chatwoot':'#1f93ff'}
+SERVICE_COLORS = {'whatsapp':'#25d366','telegram':'#26a5e4','chatwoot':'#1f93ff','custom':'#3584e4'}
 
 
 def group_name(value):
