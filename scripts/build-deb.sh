@@ -37,6 +37,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Central Chats contributors
 Depends: python3 (>= 3.10), python3 (<< 3.13), libx11-xcb1, libxcb-shape0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-render-util0, libxcb-xinerama0, libxcb-xkb1, libxkbcommon-x11-0, libnss3, libnspr4, libasound2 | libasound2t64, libdbus-1-3, libegl1, libgl1, libgbm1, libxcomposite1, libxdamage1, libxrandr2, libxtst6, libfontconfig1, libnotify-bin, libglib2.0-0 | libglib2.0-0t64
+Recommends: apparmor
 Description: Central de perfis independentes de conversas
  WhatsApp Web, Telegram e Chatwoot na mesma janela.
  Aplicativo comunitario sem afiliacao com os servicos integrados.
@@ -48,6 +49,9 @@ rm -f "$stage/opt/central-whatsapp/lib/PySide6/QtWebEngineCore.abi3.so" "$stage/
 rm -f "$stage/opt/central-whatsapp/lib/PySide6/Qt/lib/"libQt6WebEngine*.so.6 "$stage/opt/central-whatsapp/lib/PySide6/Qt/libexec/QtWebEngineProcess"
 rm -f "$stage/opt/central-whatsapp/lib/PySide6/Qt/resources/"qtwebengine* "$stage/opt/central-whatsapp/lib/PySide6/Qt/resources/"v8_context_snapshot.bin
 rm -rf "$stage/opt/central-whatsapp/lib/PySide6/Qt/translations/qtwebengine_locales"
+mkdir -p "$stage/usr/share/central-whatsapp/apparmor"
+install -m644 "$base/packaging/apparmor/central-chats-cef" "$stage/usr/share/central-whatsapp/apparmor/"
+install -m755 "$base/packaging/postinst" "$base/packaging/postrm" "$stage/DEBIAN/"
 mkdir -p "$stage/usr/share/doc/central-whatsapp"
 install -m644 "$base/LICENSE" "$base/README.md" "$base/CREDITS.md" "$stage/usr/share/doc/central-whatsapp/"
 size=$(du -sk "$stage/opt" | cut -f1)

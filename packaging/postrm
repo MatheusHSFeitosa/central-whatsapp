@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+case "${1:-}" in
+    remove|purge)
+        target=/etc/apparmor.d/central-chats-cef
+        if [ -f "$target" ] && grep -q '^# Managed by Central Chats\.' "$target"; then
+            if command -v apparmor_parser >/dev/null 2>&1; then apparmor_parser -R "$target" 2>/dev/null || true; fi
+            rm -f "$target"
+        fi
+        ;;
+esac

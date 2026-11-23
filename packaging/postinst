@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+if [ "${1:-}" = configure ] && [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ] && command -v apparmor_parser >/dev/null 2>&1; then
+    major=$(apparmor_parser --version | sed -n 's/^AppArmor parser version \([0-9][0-9]*\).*/\1/p' | head -1)
+    if [ "${major:-0}" -ge 4 ]; then
+        target=/etc/apparmor.d/central-chats-cef
+        if [ ! -e "$target" ] || grep -q '^# Managed by Central Chats\.' "$target"; then
+            install -m644 /usr/share/central-whatsapp/apparmor/central-chats-cef "$target"
+            apparmor_parser -r "$target"
+        fi
+    fi
+fi

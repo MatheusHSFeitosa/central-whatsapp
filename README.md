@@ -54,6 +54,10 @@ O APT instala um **arquivo local**. Ainda não existe repositório APT assinado 
 atualizações automáticas. Veja também a página de
 [Releases](https://github.com/MatheusHSFeitosa/central-whatsapp/releases).
 
+Se você instalou pelos scripts no usuário, atualize pelo mesmo método ou remova
+o atalho local antes de migrar para DEB; as sessões são preservadas. No Ubuntu
+24.04, o DEB inclui o perfil AppArmor específico exigido por algumas instalações.
+
 Para remover o pacote: `sudo apt remove central-whatsapp`. Os dados do usuário
 ficam preservados; remover o aplicativo não desconecta os dispositivos no celular.
 

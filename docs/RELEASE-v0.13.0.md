@@ -37,6 +37,9 @@ O pacote DEB amd64 destina-se a Pop!_OS/Ubuntu **22.04 e 24.04**, com Python
 [passo a passo de instalação](https://github.com/MatheusHSFeitosa/central-whatsapp#instalar).
 Encerre a versão anterior por **Configurações → Sair da central** antes de atualizar.
 
+O DEB também inclui um perfil AppArmor específico para o host CEF quando o Ubuntu
+24.04 restringe namespaces de usuário, mantendo a sandbox do Chromium ativa.
+
 A interface e o motor usam **X11/XWayland**. Wayland nativo, Flatpak/Flathub,
 Windows, macOS e ARM ainda não estão validados. O APT instala o arquivo local;
 não há repositório APT assinado para atualizações automáticas.

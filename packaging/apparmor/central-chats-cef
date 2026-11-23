@@ -1,0 +1,7 @@
+# Managed by Central Chats. Allow user namespaces only for this root-owned host.
+# Chromium's renderer namespace/seccomp sandbox remains enabled.
+abi <abi/4.0>,
+include <tunables/global>
+profile central-chats-cef "/opt/central-whatsapp/cef-runtime/central-cef-host" flags=(unconfined) {
+  userns,
+}

@@ -42,3 +42,20 @@ personalizado confirmado.
 Wayland nativo, Flatpak, Windows, macOS e ARM permanecem fora da matriz validada.
 A versão DEB amd64 destina-se a Pop!_OS/Ubuntu 22.04 e 24.04, com Python 3.10–3.12.
 Não se promete redução de uso de memória em relação a um navegador comum.
+
+## AppArmor no Ubuntu 24.04
+
+Algumas instalações Ubuntu restringem namespaces de usuário por AppArmor. O DEB
+contém um perfil específico para o host **root-owned** em
+`/opt/central-whatsapp/cef-runtime/central-cef-host` e o carrega quando o kernel
+e o parser suportam a regra. Ele permite `userns` para esse executável; não
+altera a política global do sistema e não desativa a sandbox do Chromium.
+
+A matriz Ubuntu 24.04 carrega a mesma regra para o caminho exato do host do
+runner. O teste continua exigindo isolamento do renderer e ausência de
+`--no-sandbox`. Essa configuração segue a
+[documentação do Chromium sobre AppArmor e namespaces](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md).
+
+Para instalações por código em um Ubuntu que aplique essa restrição, prefira o
+DEB. Um administrador pode adaptar o perfil ao caminho exato do host; a
+instalação no usuário não modifica automaticamente a política AppArmor.
