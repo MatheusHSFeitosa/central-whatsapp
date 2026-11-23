@@ -27,6 +27,7 @@ jobs:
       - name: Exercitar motor CEF com mídia e perfis fictícios
         env:
           QT_QPA_PLATFORM: xcb
+          CENTRAL_CEF_TEST_TRACE: '1'
           CENTRAL_CEF_RUNTIME: ${{ github.workspace }}/build/cef-runtime
         run: |
           sh scripts/test-qt-ci.sh build/test-env/bin/python tests/cef_native_events_smoke.py
